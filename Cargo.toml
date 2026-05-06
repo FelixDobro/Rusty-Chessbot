@@ -2,6 +2,3 @@
 name = "chess_bot"
 version = "0.1.0"
 edition = "2024"
-
-[dependencies]
-chess = "3.2.0"
