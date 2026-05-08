@@ -51,8 +51,36 @@ pub const STRAIGHT_LINES: [u64; 64] = {
     table
 };
 
+pub const DIAGONAL_LINES: [u64; 64] = {
+    let mut table: [u64; 64] = [0u64; 64];
+    let mut sq = 0;
+
+    while sq < 64 {
+        let board = 1u64 << sq;
+        let mut left_prefix = board;
+
+        let mut right_prefix = board;
+        let mut slider: u32 = 0;
+        let mut moves = 0u64;
+        while slider < 6 {
+            slider += 1;
+            left_prefix = (left_prefix >> 1) & !(FILE_A | FILE_H);
+            right_prefix = (right_prefix << 1) & !(FILE_A | FILE_H);
+
+            moves |=
+                ((left_prefix >> slider * 8) & !RANK_1) | ((left_prefix << 8 * slider) & !(RANK_8));
+            moves |= ((right_prefix >> slider * 8) & !RANK_1)
+                | ((right_prefix << 8 * slider) & !(RANK_8));
+        }
+        table[sq as usize] = moves;
+        sq += 1;
+    }
+
+    table
+};
+
 // Needed for const PDEP Intrinsic functionallity. Slow but does not matter since precomputed
-const fn const_PDEP(mut index: u64, mut move_rays: u64) -> u64 {
+const fn const_PDEP(index: u64, mut move_rays: u64) -> u64 {
     let mut start = 0;
     let mut result = 0;
 
@@ -70,10 +98,76 @@ const fn const_PDEP(mut index: u64, mut move_rays: u64) -> u64 {
     result
 }
 
-const NUM_INDICES_STRAIGHT: u64 = 4096;
+pub static DIAG_LINES_MAGIC: LazyLock<Box<[[u64; 512]; 64]>> = LazyLock::new(|| {
+    let mut table: Box<[[u64; 512]; 64]> = Box::new([[0u64; 512]; 64]);
+
+    let mut sq = 0;
+
+    while sq < 64 {
+        let move_mask = DIAGONAL_LINES[sq as usize];
+
+        let mut unique_index = 0;
+
+        while unique_index < (1u64 << move_mask.count_ones()) {
+            let occupancy = const_PDEP(unique_index, move_mask);
+
+            let mut tmp_square: i32 = sq as i32;
+            let mut moves = EMPTY;
+
+            // right up
+            while tmp_square % 8 < 7 && tmp_square < 56{
+                tmp_square += 9;
+                let bit = 1u64 << tmp_square;
+                moves |= bit;
+                if occupancy & bit != 0 {
+                    break;
+                }
+            }
+
+            let mut tmp_square: i32 = sq as i32;
+            // left up
+            while tmp_square % 8 > 0 && tmp_square < 56 {
+                tmp_square += 7;
+                let bit = 1u64 << tmp_square;
+                moves |= bit;
+                if occupancy & bit != 0 {
+                    break;
+                }
+            }
+
+            let mut tmp_square: i32 = sq as i32;
+            // right down
+            while tmp_square % 8 < 7 && tmp_square > 7 {
+                tmp_square -= 7;
+                let bit = 1u64 << tmp_square;
+                moves |= bit;
+                if occupancy & bit != 0 {
+                    break;
+                }
+            }
+
+            let mut tmp_square = sq as i32;
+            // left down
+            while tmp_square % 8 > 0 && tmp_square > 7 {
+                tmp_square -= 9;
+                let bit = 1u64 << tmp_square;
+                moves |= bit;
+                if occupancy & bit != 0 {
+                    break;
+                }
+            }
+
+            table[sq][unique_index as usize] = moves;
+            unique_index += 1;
+        }
+        sq += 1;
+    }
+
+    table
+});
 
 pub static STRAIGHT_LINES_MAGIC: LazyLock<Box<[[u64; 4096]; 64]>> = LazyLock::new(|| {
-    let mut table: [[u64; 4096]; 64] = [[0u64; 4096]; 64];
+    let mut table: Box<[[u64; 4096]; 64]> = Box::new([[0u64; 4096]; 64]);
 
     let mut sq: u32 = 0;
 
@@ -134,10 +228,8 @@ pub static STRAIGHT_LINES_MAGIC: LazyLock<Box<[[u64; 4096]; 64]>> = LazyLock::ne
         sq += 1;
     }
 
-    Box::new(table)
+    table
 });
-
-
 
 pub const PAWN_ATTACKS: [[u64; 64]; 2] = {
     let mut map: [[u64; 64]; 2] = [[0u64; 64]; 2];
@@ -294,19 +386,15 @@ impl Square {
     pub fn index(self) -> usize {
         self as usize
     }
-}
 
-impl TryFrom<u8> for Square {
-    type Error = &'static str;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value < 64 {
-            Ok(unsafe { std::mem::transmute(value) })
-        } else {
-            Err("Invalid Square index")
-        }
+    #[inline(always)]
+    pub const fn from_u8(value: u8) -> Self {
+        
+        unsafe { std::mem::transmute(value) }
     }
 }
+
+
 
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
@@ -317,9 +405,20 @@ pub enum Color {
 }
 
 impl Color {
-    #[inline]
+    #[inline(always)]
     pub fn index(self) -> usize {
         self as usize
+    }
+
+    #[inline(always)]
+    pub fn offset(self) -> usize {
+        self as usize * NUM_PIECES
+    }
+    
+    #[inline(always)]
+    pub fn opposite(self) -> Color {
+        
+        unsafe { std::mem::transmute((self as usize ^ 1) as u8) }
     }
 }
 
