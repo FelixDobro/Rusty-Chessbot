@@ -46,6 +46,11 @@ impl Move {
 
 
     #[inline(always)]
+    pub fn is_quiet(self) -> bool {
+        self.flags() == 0 
+    }
+
+    #[inline(always)]
     pub fn is_capture(self) -> bool {
         (self.flags() & 4) != 0 
     }

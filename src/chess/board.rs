@@ -367,6 +367,10 @@ impl Board {
 
     pub fn make_pseudolegal_move(&mut self, m: Move) {
         match m.flags() {
+            Move::QUIET => {
+                self.move_piece(Square::from_u8(m.from()), Square::from_u8(m.to()));
+                
+            }
             Move::KING_CASTLE => match self.turn {
                 White => {
                     self.move_piece(Square::E1, Square::G1);
@@ -451,7 +455,7 @@ impl Board {
                         promoted_to_piece,
                     );
                 } else {
-                    self.move_piece(Square::from_u8(m.from()), Square::from_u8(m.to()));
+                    
                 }
             }
         }

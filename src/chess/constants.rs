@@ -28,6 +28,41 @@ pub const FILE_F: u64 = 0x2020202020202020;
 pub const FILE_G: u64 = 0x4040404040404040;
 pub const FILE_H: u64 = 0x8080808080808080;
 
+#[repr(u8)]
+pub enum CASTLING_RIGHTS {
+    KingCastleWhite = 1,
+    KingCastleBlack = 2,
+    QueenCastleWhite = 4,
+    QueenCastleBlack = 8
+}
+
+impl CASTLING_RIGHTS {
+
+    #[inline(always)]
+    pub fn index(self) -> u8 {
+        self as u8
+    } 
+}
+
+pub const CASTLING_RIGHTS: [u8; 64] = {
+    let mut i = 0;
+    let mut table: [u8; 64] = [0u8; 64];
+    while i < 64 {
+        table[i as usize] = match Square::from_u8(i) {
+            Square::A1 => 4,
+            Square::A8 => 8,
+            Square::H1 => 1,
+            Square::H8 => 2,
+            _ => 15
+
+        };
+        i += 1;
+    }
+    table
+};
+
+
+
 pub const STRAIGHT_LINES: [u64; 64] = {
     let mut table: [u64; 64] = [0u64; 64];
     let mut sq = 0;

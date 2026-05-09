@@ -35,15 +35,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let now = Instant::now();
     
     board.make_pseudolegal_move(m2);
-  
-    let time_elapsed = now.elapsed();
-    println!("Time elapsed: {:?}", time_elapsed);
-
-  
     board.make_pseudolegal_move(m3);
     board.make_pseudolegal_move(m4);
     board.make_pseudolegal_move(m5);
+    
     board.make_pseudolegal_move(m6);
+    let time_elapsed = now.elapsed();
+    println!("Time elapsed: {:?}", time_elapsed);
+
+
+  
 
     print_bitboard(board.get_bit_board(Piece::Pawn.index() + Color::Black.offset()));
     print!("{:?}", board.get_piece(Square::D5));
