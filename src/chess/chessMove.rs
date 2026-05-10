@@ -1,3 +1,7 @@
+use core::fmt;
+
+use crate::chess::constants::Square;
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct Move(u16);
@@ -56,12 +60,62 @@ impl Move {
     }
 
     #[inline(always)]
+    pub fn is_simple_promo(self) -> bool {
+        (self.flags() >> 2) == 3
+    }
+
+    #[inline(always)]
     pub fn is_promo(self) -> bool {
         (self.flags() & 8) != 0
     }
 
+    #[inline(always)]
+    pub fn is_castle(&self) -> bool {
+        self.flags() == 3 || self.flags() == 2
+    }
+
+    #[inline(always)]
+    pub fn get_castle_idx(&self) -> usize {
+        self.flags().trailing_zeros() as usize
+    }
+
+}
 
 
+impl fmt::Display for Move {
 
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "From: {:?}, To: {:?}, Flag: {}", Square::from_u8(self.from()), Square::from_u8(self.to()), self.flags())
+    }
+}
 
+const MAX_MOVES: usize = 256;
+
+pub struct MoveList {
+
+    moves: [Move; MAX_MOVES],
+    count: usize,
+}
+
+impl MoveList {
+    
+    pub fn new() -> Self {
+        Self { moves: [Move(0); MAX_MOVES], count: 0 }
+    }
+
+    #[inline(always)]
+    pub fn push(&mut self, m: Move) {
+        self.moves[self.count] = m;
+        self.count += 1;
+    } 
+
+    pub fn as_sclice(&self) -> &[Move] {
+        &self.moves[0..self.count]
+    }
+
+    pub fn print_list(&self) {
+        for m in self.as_sclice() {
+            println!("{}", m)
+        }
+    }
 }

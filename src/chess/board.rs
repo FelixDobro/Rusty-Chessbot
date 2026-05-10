@@ -1,8 +1,11 @@
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
+use std::backtrace::Backtrace;
 use std::error::Error;
 use std::ffi::FromBytesUntilNulError;
+use std::io::StdoutLock;
 
+use crate::chess::chessMove::MoveList;
 use crate::chess::constants::Color::Empty as EmptyC;
 use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::Piece::*;
@@ -19,10 +22,11 @@ pub struct Board {
     occupied: u64,
 
     piece: [Piece; 64],
-    color: [Color; 64],
+
 
     turn: Color,
-    en_passant: u64,
+    pub en_passant: u64,
+    castling_rights: u8,
 }
 
 impl Board {
@@ -56,17 +60,9 @@ impl Board {
                 Bishop, Knight, Rook,
             ],
 
-            color: [
-                White, White, White, White, White, White, White, White, White, White, White, White,
-                White, White, White, White, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC,
-                EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC,
-                EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, EmptyC,
-                EmptyC, EmptyC, EmptyC, EmptyC, EmptyC, Black, Black, Black, Black, Black, Black,
-                Black, Black, Black, Black, Black, Black, Black, Black, Black, Black,
-            ],
-
             turn: White,
             en_passant: 0,
+            castling_rights: 0xF
         }
     }
 
@@ -78,8 +74,9 @@ impl Board {
         self.occupied
     }
 
-    pub fn knight_pattern(&self, color: Color) -> u64 {
-        let board = self.piece_bb[Knight.index() + color.offset()];
+    #[inline(always)]
+    pub fn knight_pattern<S: Side>(&self) -> u64 {
+        let board = self.piece_bb[Knight.index() + S::OFFSET];
 
         // 2 horizontal 1 vertical
         let mut prefix = (board << 16) | (board >> 16);
@@ -91,77 +88,70 @@ impl Board {
         let final_pattern = ((prefix >> 2) & !(FILE_G | FILE_H))
             | ((prefix << 2) & !(FILE_A | FILE_B))
             | (first_half);
-        final_pattern & !self.color_bb[color.index()]
+        final_pattern & !self.color_bb[S::INDEX]
     }
 
     pub fn black_pieces(&self) -> u64 {
-        self.color_bb[Color::Black.index()]
+        self.color_bb[BlackSide::INDEX]
     }
 
     pub fn white_pieces(&self) -> u64 {
-        self.color_bb[Color::White.index()]
+        self.color_bb[WhiteSide::INDEX]
     }
 
-    pub fn knight_pseudolegals(&self, color: Color) -> u64 {
-        self.knight_pattern(color) & !self.color_bb[color.index()]
+    pub fn knight_pseudolegals<S: Side>(&self) -> u64 {
+        self.knight_pattern::<S>() & !self.color_bb[S::INDEX]
     }
 
-    pub fn king_pattern(&self, color: Color) -> u64 {
-        let board = self.piece_bb[color.offset() + Piece::King.index()];
+    pub fn king_pattern<S: Side>(&self) -> u64 {
+        let board = self.piece_bb[S::OFFSET + King.index()];
         let king_pattern = KING_PATTERNS[board.trailing_zeros() as usize];
         king_pattern
     }
 
-    pub fn king_pseudolegals(&self, color: Color) -> u64 {
-        self.king_pattern(color) & !self.color_bb[color.index()]
+    pub fn king_pseudolegals<S: Side>(&self) -> u64 {
+        self.king_pattern::<S>() & !self.color_bb[S::INDEX]
     }
 
-    pub fn w_single_push(&self) -> u64 {
-        let board = self.piece_bb[Color::White.offset() + Piece::Pawn.index()];
-        (board << 8) & !self.occupied
+    pub fn pawn_single_push<S: Side>(&self) -> u64 {
+        let board = self.piece_bb[S::OFFSET + Pawn.index()];
+        S::shift_up(board) & !self.occupied
+    } 
+
+    pub fn pawn_double_push<S: Side>(&self) -> u64 {
+        let board = self.pawn_single_push::<S>();
+        S::shift_up(board) & !self.occupied
     }
 
-    pub fn w_double_push(&self) -> u64 {
-        let board = self.w_single_push();
-        (board << 8) & !self.occupied & RANK_4
-    }
 
     pub fn w_pawn_attacks(&self) -> u64 {
         let forward = self.piece_bb[White.offset() + Pawn.index()] << 8;
         let mut result = 0u64;
         let black_pieces = self.black_pieces();
         let left_side = (forward << 1) & !FILE_A;
-        result |= left_side & black_pieces;
+        result |= left_side & (black_pieces | self.en_passant);
 
         let right_side = (forward >> 1) & !FILE_H;
         result |= right_side & (black_pieces | self.en_passant);
         result
     }
 
-    pub fn b_single_push(&self) -> u64 {
-        let board = self.piece_bb[Color::Black.offset() + Piece::Pawn.index()];
-        (board >> 8) & !self.occupied
-    }
 
-    pub fn b_double_push(&self) -> u64 {
-        let board = self.b_single_push();
-        (board >> 8) & !self.occupied & RANK_5
-    }
 
     pub fn b_pawn_attacks(&self) -> u64 {
         let forward = self.piece_bb[Black.offset() + Pawn.index()] >> 8;
         let mut result = 0u64;
         let white_pieces = self.white_pieces();
         let left_side = (forward << 1) & !FILE_A;
-        result |= left_side & white_pieces;
+        result |= left_side & (white_pieces | self.en_passant);
 
         let right_side = (forward >> 1) & !FILE_H;
         result |= right_side & (white_pieces | self.en_passant);
         result
     }
 
-    pub fn rook_pseudolegals(&self, color: Color) -> u64 {
-        let mut rooks = self.piece_bb[color.offset() + Rook.index()];
+    pub fn rook_pseudolegals<S: Side>(&self) -> u64 {
+        let mut rooks = self.piece_bb[S::OFFSET + Rook.index()];
         let mut moves = 0u64;
         while rooks != 0 {
             let sq = rooks.trailing_zeros() as u64;
@@ -170,11 +160,11 @@ impl Board {
             moves |= STRAIGHT_LINES_MAGIC[sq as usize][index as usize];
             rooks &= rooks - 1;
         }
-        moves & !self.color_bb[color.offset()]
+        moves & !self.color_bb[S::INDEX]
     }
 
-    pub fn bishop_pseudolegals(&self, color: Color) -> u64 {
-        let mut bishops = self.piece_bb[color.offset() + Bishop.index()];
+    pub fn bishop_pseudolegals<S: Side>(&self) -> u64 {
+        let mut bishops = self.piece_bb[S::OFFSET + Bishop.index()];
 
         let mut moves = 0u64;
         while bishops != 0 {
@@ -185,8 +175,9 @@ impl Board {
             bishops &= bishops - 1;
         }
 
-        moves & !self.color_bb[color.offset()]
+        moves & !self.color_bb[S::INDEX]
     }
+
 
     pub fn diag_lines_w_bound(&self, sq: Square) -> u64 {
         let mask = DIAGONAL_LINES[sq as usize];
@@ -200,37 +191,42 @@ impl Board {
         STRAIGHT_LINES_MAGIC[sq as usize][index as usize]
     }
 
-    pub fn sq_attacked_by(&self, sq: Square, color: Color) -> bool {
-        let attacker_pawns = self.piece_bb[color.offset() + Pawn.index()];
-        if (PAWN_ATTACKS[color.index() ^ 1][sq.index()] & attacker_pawns) > 0u64 {
+    pub fn sq_attacked_by<S: Side>(&self, sq: Square) -> bool {
+        let attacker_pawns = self.piece_bb[S::OFFSET + Pawn.index()];
+        if (PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & attacker_pawns) > 0u64 {
             return true;
         }
 
-        let attacker_knights = self.piece_bb[color.offset() + Knight.index()];
+        let attacker_knights = self.piece_bb[S::OFFSET + Knight.index()];
         if (KNIGHT_PATTERNS[sq as usize] & attacker_knights) > 0u64 {
             return true;
         }
 
-        let attacking_king = self.piece_bb[color.offset() + King.index()];
+        let attacking_king = self.piece_bb[S::OFFSET + King.index()];
         if (KING_PATTERNS[sq as usize] & attacking_king) > 064 {
             return true;
         }
 
-        let attack_bishop_queens = self.piece_bb[color.offset() + Queen.index()]
-            | self.piece_bb[color.offset() + Bishop.index()];
+        let attack_bishop_queens = self.piece_bb[S::OFFSET + Queen.index()]
+            | self.piece_bb[S::OFFSET + Bishop.index()];
 
         if (self.diag_lines_w_bound(sq) & attack_bishop_queens) > 0u64 {
             return true;
         }
 
-        let attack_rook_queens = self.piece_bb[color.offset() + Queen.index()]
-            | self.piece_bb[color.offset() + Rook.index()];
+        let attack_rook_queens = self.piece_bb[S::OFFSET + Queen.index()]
+            | self.piece_bb[S::OFFSET + Rook.index()];
 
         if (self.straight_lines_w_bound(sq) & attack_rook_queens) > 0u64 {
             return true;
         }
 
         false
+    }
+
+    #[inline(always)]
+    fn get_king_square<S: Side>(&self) -> Square {
+        Square::from_u8(self.piece_bb[S::OFFSET + King.index()].trailing_zeros() as u8)
     }
 
     pub fn get_piece(&self, square: Square) -> Piece {
@@ -241,228 +237,402 @@ impl Board {
         return self.get_piece(square) as usize;
     }
 
-    pub fn get_color(&self, square: Square) -> Color {
-        self.color[square as usize]
+    pub fn generate_pseudolegals(&self) -> MoveList {
+        match self.turn {
+            White => self.pseudolegal_moves::<WhiteSide>(),
+            Black => self.pseudolegal_moves::<BlackSide>(),
+            _ => panic!()
+        }
+    }
+  
+    fn pseudolegal_moves<S: Side>(&self) -> MoveList {
+        let mut move_list = MoveList::new();
+        self.pawn_moves::<S>(&mut move_list);
+        self.knigh_moves::<S>(&mut move_list);
+        move_list
     }
 
-    pub fn get_color_usize(&self, square: Square) -> usize {
-        self.color[square as usize] as usize
-    }
+    pub fn knigh_moves<S:Side>(&self, move_list: &mut MoveList) {
+        let mut knight_board = self.piece_bb[S::OFFSET + Knight.index()];
+        
+        while knight_board != 0 {
+            let from_sqaure = knight_board.trailing_zeros() as u16;
+            
+            let pattern_board = KNIGHT_PATTERNS[from_sqaure as usize];
+            let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
+            let mut normal_moves = pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
+            
+            while captures != 0 {
+                let to_square = captures.trailing_zeros() as u16;
+                move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
+                captures &= captures -1;
+            }
 
-    #[inline(always)]
-    fn remove_piece(&mut self, sq: Square) {
-        let p = self.piece[sq.index()];
-        let c = self.color[sq.index()];
-
-        let remove_board = 1u64 << sq.index();
-
-        self.piece_bb[p.index() + c.offset()] ^= remove_board;
-        self.occupied ^= remove_board;
-        self.color_bb[c.index()] ^= remove_board;
-
-        self.piece[sq.index()] = Empty;
-        self.color[sq.index()] = EmptyC;
-    }
-
-    #[inline(always)]
-    fn remove_piece_boards(&mut self, sq: Square) {
-        let p = self.piece[sq.index()];
-        let c = self.color[sq.index()];
-
-        let remove_board = 1u64 << sq.index();
-
-        self.piece_bb[p.index() + c.offset()] ^= remove_board;
-        self.color_bb[c.index()] ^= remove_board;
-    }
-
-    #[inline(always)]
-    fn promote(&mut self, from: Square, to: Square, promo: Piece) {
-        let from_board = 1u64 << from.index();
-        let to_board = 1u64 << to.index();
-
-        let p = self.piece[from.index()];
-        let c = self.color[from.index()];
-
-        self.piece_bb[p.index() + c.offset()] ^= to_board;
-        self.occupied = self.occupied ^ from_board;
-
-        self.color_bb[c.index()] ^= from_board;
-
-        self.piece[from.index()] = Empty;
-        self.piece[to.index()] = promo;
-
-        self.color[from.index()] = EmptyC;
-        self.color[to.index()] = c;
+            while normal_moves != 0 {
+                let to_square = normal_moves.trailing_zeros() as u16;
+                move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
+                normal_moves &= normal_moves -1;
+            }
+            knight_board &= knight_board -1;
+        }
     }
 
     #[inline(always)]
-    fn move_piece(&mut self, from: Square, to: Square) {
-        let from_board = 1u64 << from.index();
-        let to_board = 1u64 << to.index();
+    pub fn pawn_moves<S:Side>(&self, move_list: &mut MoveList) {
+        let pawn_board = self.piece_bb[Pawn.index() + S::OFFSET];
 
-        let movement = from_board ^ to_board;
-        let p = self.piece[from.index()];
-        let c = self.color[from.index()];
+        let mut pushes = S::shift_up(pawn_board) & !self.occupied;
+        let mut single_pushes = pushes &! S::LAST_RANK;
+        let mut double_pushes = S::shift_up(single_pushes) & S::DOUBLE_PUSH_RANK & !self.occupied;
+        let mut promotions = pushes & S::LAST_RANK;
 
-        self.piece_bb[p.index() + c.offset()] ^= movement;
-        self.occupied = self.occupied ^ from_board;
-        self.color_bb[c.index()] ^= from_board;
+        let attack_pattern_left = S::pawn_attack_pattern_l(pawn_board);
+        let attack_pattern_right =  S::pawn_attack_pattern_r(pawn_board);
 
-        self.piece[from.index()] = Empty;
-        self.piece[to.index()] = p;
+        let all_left_attacks = attack_pattern_left & self.color_bb[S::OPPOSITE::INDEX];
+        let mut left_attacks= all_left_attacks & !S::LAST_RANK;
+        let mut left_promotions_cap = all_left_attacks & S::LAST_RANK;
 
-        self.color[from.index()] = EmptyC;
-        self.color[to.index()] = c;
-    }
+        let all_right_attacks = attack_pattern_right & self.color_bb[S::OPPOSITE::INDEX];
+        let mut right_attacks = all_right_attacks & !S::LAST_RANK;
+        let mut right_promotions_cap = S::LAST_RANK & right_attacks;
 
-    #[inline(always)]
-    fn capture(&mut self, from: Square, to: Square) {
-        let from_board = 1u64 << from.index();
-        let to_board = 1u64 << to.index();
-
-        let movement = from_board ^ to_board;
-        let p_capturing = self.piece[from.index()];
-        let c_capturing = self.color[from.index()];
-
-        let p_captured = self.piece[to.index()];
-        let c_captured = self.color[to.index()];
-
-        // bitboard updates
-        self.piece_bb[p_capturing.index() + c_capturing.offset()] ^= movement;
-        self.piece_bb[p_captured.index() + c_captured.offset()] ^= to_board;
+        let mut left_en_passants = attack_pattern_left & self.en_passant;
+        let mut right_en_passants = attack_pattern_right & self.en_passant;
         
 
-        self.color_bb[c_capturing.index()] ^= from_board;
-        self.color_bb[c_capturing.index() ^ 1] ^= to_board;
+        while single_pushes != 0 {
+            let to_square = single_pushes.trailing_zeros() as i8; 
+            move_list.push(Move::new((to_square - S::UP) as u16, to_square as u16, 0));
+            single_pushes &= single_pushes-1;
+        }
 
-        self.occupied = self.occupied ^ from_board;
+        while double_pushes != 0 {
+            let to_square = double_pushes.trailing_zeros() as i8;
+            move_list.push(Move::new((to_square - S::UP - S::UP) as u16, to_square as u16, 1));
+            double_pushes &= double_pushes -1;
+        }
 
-        // 8x8 updates
-        self.piece[from.index()] = Empty;
-        self.piece[to.index()] = p_capturing;
+        while promotions != 0 {
+            let to_square = promotions.trailing_zeros() as i8;
+            let from_square = (to_square - S::UP) as u16;
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_KNIGHT));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_QUEEN));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_ROOK));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_BISHOP));
+            promotions &= promotions -1;
+        }
 
-        self.color[from.index()] = EmptyC;
-        self.color[to.index()] = c_capturing;
+        while left_attacks != 0 {
+            let to_square = left_attacks.trailing_zeros() as i8;
+            move_list.push(Move::new((to_square - S::UP - 1) as u16, to_square as u16, Move::CAPTURE));
+            left_attacks &= left_attacks -1;
+        }
+
+        while right_attacks != 0 {
+            let to_square = right_attacks.trailing_zeros() as i8;
+            move_list.push(Move::new((to_square - S::UP + 1) as u16, to_square as u16, Move::CAPTURE));
+            right_attacks &= right_attacks -1;
+        }
+
+        while left_en_passants != 0 {
+            let to_square = left_en_passants.trailing_zeros() as i8;
+            move_list.push(Move::new((to_square - S::UP - 1) as u16, to_square as u16, Move::EN_PASSANT));
+            left_en_passants &= left_en_passants -1;
+        }
+
+        while right_en_passants != 0 {
+            let to_square = right_en_passants.trailing_zeros() as i8;
+            move_list.push(Move::new((to_square - S::UP + 1) as u16, to_square as u16, Move::EN_PASSANT));
+            right_en_passants &= right_en_passants -1;   
+        }
+
+        while left_promotions_cap != 0 {
+            let to_square = left_promotions_cap.trailing_zeros() as i8;
+            let from_square =(to_square - S::UP - 1) as u16;
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_KNIGHT));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_BISHOP));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_QUEEN));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_ROOK));
+            left_promotions_cap &= left_promotions_cap -1;
+        }
+
+        while right_promotions_cap != 0 {
+            let to_square = right_promotions_cap.trailing_zeros() as i8;
+            let from_square =(to_square - S::UP + 1) as u16;
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_KNIGHT));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_BISHOP));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_QUEEN));
+            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_CAP_ROOK));
+            right_promotions_cap &= right_promotions_cap -1;
+        }
+
     }
 
     #[inline(always)]
-    fn capture_promote(&mut self, from: Square, to: Square, promo: Piece) {
-        let from_board = 1u64 << from.index();
-        let to_board = 1u64 << to.index();
+    fn promote<S: Side>(&mut self, m: Move) -> bool {
+        let from = m.from();
+        let to = m.to();
 
-        let p = self.piece[from.index()];
-        let c = self.color[from.index()];
+        let from_board = 1u64 << from;
+        let to_board = 1u64 << to;
+        let movement = from_board ^ to_board;
 
-        self.piece_bb[p.index() + c.offset()] ^= from_board;
-        self.occupied = self.occupied ^ from_board;
-        self.color_bb[c.index()] ^= from_board;
-        self.color_bb[c.index() ^ 1] ^= to_board;
+        let p = self.piece[from as usize];
 
-        self.piece[from.index()] = Empty;
-        self.piece[to.index()] = promo;
+        self.piece_bb[p.index() + S::OFFSET] ^= from_board;
+        self.occupied ^= movement;
 
-        self.color[from.index()] = EmptyC;
-        self.color[to.index()] = c;
+        if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
+            self.piece_bb[p.index() + S::OFFSET] ^= from_board;
+            self.occupied ^= movement;
+            return false
+        }
+
+        self.color_bb[S::INDEX] ^= movement;
+        self.piece[from as usize] = Empty;
+
+        let promo = match m.flags() {
+            Move::PROMO_QUEEN => Queen,
+            Move::PROMO_KNIGHT => Knight,
+            Move::PROMO_BISHOP => Bishop,
+            Move::PROMO_ROOK => Rook,
+            _ => panic!()
+        };
+        self.piece[to as usize] = promo;
+        self.piece_bb[promo.index()] ^= to_board;
+
+        self.en_passant = 0;
+        self.turn = self.turn.opposite();
+        true
     }
 
-    pub fn make_pseudolegal_move(&mut self, m: Move) {
+    #[inline(always)]
+    fn move_piece<S: Side>(&mut self, m: Move) -> bool {
+        let from = m.from();
+        let to = m.to();
+        let from_board = 1u64 << from;
+        let to_board = 1u64 << to;
+        let movement = from_board ^ to_board;
+        let p = self.piece[from as usize];
+
+
+        self.piece_bb[p.index() + S::OFFSET] ^= movement;
+        self.occupied ^= movement;
+        
+        if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
+            self.piece_bb[p.index() + S::OFFSET] ^= movement;
+            self.occupied ^= movement;
+            return false
+        }
+
+        self.color_bb[S::INDEX] ^= movement;
+
+        self.piece[from as usize] = Empty;
+        self.piece[to as usize] = p;
+
+    
+        self.castling_rights ^= CASTLING_RIGHTS[from as usize];    
+        self.turn = self.turn.opposite();
+
+        true
+    }
+
+
+    #[inline(always)]
+    fn en_passant<S: Side>(&mut self, m: Move) -> bool {
+        let from = m.from();
+        let to = m.to();
+        let from_board = 1u64 << from;
+        let to_board = 1u64 << to;
+
+        let movement = from_board ^ to_board;
+        let p = self.piece[from as usize];
+
+        self.piece_bb[p.index() + S::OFFSET] ^= movement;
+        self.occupied ^= movement;
+        
+        if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
+            self.piece_bb[p.index() + S::OFFSET] ^= movement;
+            self.occupied ^= movement;
+            return false
+        }
+
+        self.color_bb[S::INDEX] ^= movement;
+
+        self.piece[from as usize] = Empty;
+        self.piece[to as usize] = p;
+        
+        let captured_piece = EN_PASSANT_RM_SQUARES[to as usize];
+        self.piece_bb[Pawn.index() + self.turn.opposite().offset()] ^= captured_piece;
+        self.color_bb[S::OPPOSITE::INDEX] ^= captured_piece;
+        
+        self.en_passant = 0;
+        self.turn = self.turn.opposite();
+        true
+    }
+
+
+    #[inline(always)]
+    fn capture<S: Side>(&mut self, m: Move) -> bool{
+        let from = m.from();
+        let to = m.to();
+        let from_board = 1u64 << from;
+        let to_board = 1u64 << to;
+
+        let movement = from_board ^ to_board;
+        
+        let p_capturing = self.piece[from as usize];
+
+
+        self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
+        self.occupied ^= from_board;
+
+        if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
+            self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
+            self.occupied ^= from_board;
+            return false
+        }
+        
+        let p_captured = self.piece[to as usize];
+
+        // bitboard updates
+        
+        self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
+        
+        self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
+        self.color_bb[S::INDEX] ^= movement;
+
+        // 8x8 updates
+        self.piece[from as usize] = Empty;
+        self.piece[to as usize] = p_capturing;
+
+        self.en_passant = 0;
+        self.castling_rights ^= CASTLING_RIGHTS[from as usize];
+        self.castling_rights ^= CASTLING_RIGHTS[to as usize];
+        self.turn = self.turn.opposite();
+        true
+    }
+
+    #[inline(always)]
+    fn capture_promote<S: Side>(&mut self, m: Move) -> bool{
+        let from = m.from();
+        let to = m.to();
+        let from_board = 1u64 << from;
+        let to_board = 1u64 << to;
+
+        let movement = from_board ^ to_board;
+        
+        let p_capturing = self.piece[from as usize];
+
+        self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
+        self.occupied ^= from_board;
+
+        if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
+            self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
+            self.occupied ^= from_board;
+            return false
+        }
+        
+        let p_captured = self.piece[to as usize];
+
+        // bitboard updates
+        
+        self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
+        self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
+
+        self.piece[from as usize] = Empty;
+        self.piece[to as usize] = match m.flags() {
+            Move::PROMO_QUEEN => Queen,
+            Move::PROMO_KNIGHT => Knight,
+            Move::PROMO_BISHOP => Bishop,
+            Move::PROMO_ROOK => Rook,
+            _ => panic!()
+        };
+
+        self.en_passant = 0;
+        self.castling_rights ^= CASTLING_RIGHTS[to as usize];
+        self.turn = self.turn.opposite();
+
+        true
+    }
+
+
+    #[inline(always)]
+    fn castle<S: Side>(&mut self, m: Move) {
+
+        let mechs = &CASTLING_TABLE[S::INDEX][(m.flags() >> 2) as usize];
+        self.castling_rights ^= mechs.castling_rights_update;
+        self.piece_bb[S::OFFSET + King.index()] ^= mechs.king_movement;
+        self.piece_bb[S::OFFSET + Rook.index()] ^= mechs.rook_movement;
+
+        self.color_bb[self.turn.index()] ^= mechs.combined_movement;
+        self.occupied ^= mechs.combined_movement;
+
+        self.piece[mechs.king_disappears.index()] = Empty;
+        self.piece[mechs.king_appears.index()] = King;
+
+        self.piece[mechs.rook_disappears.index()] = Empty;
+        self.piece[mechs.rook_appears.index()] = Rook;
+
+        self.turn = self.turn.opposite();
+    
+    }
+
+    #[inline(always)]
+    pub fn make_move(&mut self, m: Move) -> bool {
+        match self.turn {
+            Color::White => self.make_pseudolegal_move::<WhiteSide>(m),
+            Color::Black => self.make_pseudolegal_move::<BlackSide>(m),
+            _ => panic!("Keiner am Zug!"),
+        }
+    }
+
+    pub fn make_pseudolegal_move<S: Side>(&mut self, m: Move) -> bool{
+        let mut success: bool = true;
+
         match m.flags() {
             Move::QUIET => {
-                self.move_piece(Square::from_u8(m.from()), Square::from_u8(m.to()));
-                
-            }
-            Move::KING_CASTLE => match self.turn {
-                White => {
-                    self.move_piece(Square::E1, Square::G1);
-                    self.move_piece(Square::H1, Square::F1);
-                }
-                Black => {
-                    self.move_piece(Square::E8, Square::G8);
-                    self.move_piece(Square::H8, Square::F8);
-                }
-                _ => {}
+                success = self.move_piece::<S>(m);
             },
-            Move::QUEEN_CASTLE => match self.turn {
-                White => {
-                    self.move_piece(Square::E1, Square::C1);
-                    self.move_piece(Square::A1, Square::D1);
+            Move::CAPTURE => {
+                success = self.capture::<S>(m);
+            },
+            Move::DOUBLE_PAWN => {
+                success = self.move_piece::<S>(m);
+                if success {
+                    self.en_passant = EN_PESSANT_UPDATES[m.from() as usize];
                 }
-                Black => {
-                    self.move_piece(Square::E8, Square::C8);
-                    self.move_piece(Square::A8, Square::D8);
-                }
-                _ => {}
             },
             Move::EN_PASSANT => {
-                self.move_piece(Square::from_u8(m.from()), Square::from_u8(m.to()));
-                match self.turn {
-                    White => {
-                        self.remove_piece(Square::from_u8(m.to() - 8));
-                    }
-                    Black => {
-                        self.remove_piece(Square::from_u8(m.to() + 8));
-                    }
-                    _ => {}
-                }
-
-                self.en_passant = 0;
-            }
-            Move::DOUBLE_PAWN => {
-                let to = m.to();
-
-                match self.turn {
-                    White => {
-                        self.en_passant = 1u64 << (to - 8);
-                    }
-                    Black => {
-                        self.en_passant = 1u64 << (to + 8);
-                    }
-                    _ => {}
-                }
-
-                self.move_piece(Square::from_u8(m.from()), Square::from_u8(to));
-            }
+                success = self.en_passant::<S>(m);
+            },
 
             _ => {
-                if m.is_capture() {
-                    if m.is_promo() {
-                        let promoted_to_piece = match m.flags() {
-                            Move::PROMO_CAP_KNIGHT => Knight,
-                            Move::PROMO_CAP_QUEEN => Queen,
-                            Move::PROMO_CAP_BISHOP => Bishop,
-                            Move::PROMO_CAP_ROOK => Rook,
-                            _ => Empty,
-                        };
-                        self.capture_promote(
-                            Square::from_u8(m.from()),
-                            Square::from_u8(m.to()),
-                            promoted_to_piece,
-                        );
-                    } else {
-                        self.capture(Square::from_u8(m.from()), Square::from_u8(m.to()));
-                    }
-                } else if m.is_promo() {
-                    let promoted_to_piece = match m.flags() {
-                        Move::PROMO_CAP_KNIGHT => Knight,
-                        Move::PROMO_CAP_QUEEN => Queen,
-                        Move::PROMO_CAP_BISHOP => Bishop,
-                        Move::PROMO_CAP_ROOK => Rook,
-                        _ => Empty,
-                    };
-                    self.promote(
-                        Square::from_u8(m.from()),
-                        Square::from_u8(m.to()),
-                        promoted_to_piece,
-                    );
-                } else {
-                    
+                if m.is_castle() {
+                    self.castle::<S>(m);
+                }
+                else if m.is_simple_promo() {
+                    success = self.promote::<S>(m);
+                }
+                else {
+                    success = self.capture_promote::<S>(m);
                 }
             }
         }
-        let king_sqaure: u8= self.piece_bb[King.index() + self.turn.offset()].trailing_zeros() as u8;
 
-        if self.sq_attacked_by(Square::from_u8(king_sqaure), self.turn.opposite()) {
-            println!("Not legal, unmake would be called");
+        success
+    }
+
+
+
+
+    pub fn get_color(&self, square: u8) -> Color {
+        if self.piece_bb[0] & (1u64 << square) != 0 {
+            return White
+        }
+        else {
+            return Black
         }
     }
 
@@ -476,7 +646,8 @@ impl Board {
                 match piece {
                     Empty => print!(" ."),
                     _ => {
-                        let color = self.get_color(Square::from_u8(rank * 8 + file));
+                        
+                        let color = self.get_color(rank * 8 + file);
 
                         let symbol = SYMBOLS[piece.index() + color.offset()];
                         print!(" {}", symbol.to_string());
