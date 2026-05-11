@@ -85,7 +85,7 @@ impl Move {
 impl fmt::Display for Move {
 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "From: {:?}, To: {:?}, Flag: {}", Square::from_u8(self.from()), Square::from_u8(self.to()), self.flags())
+        write!(f, "{:?}{:?} {}", Square::from_u8(self.from()), Square::from_u8(self.to()), self.flags())
     }
 }
 
@@ -117,5 +117,10 @@ impl MoveList {
         for m in self.as_sclice() {
             println!("{}", m)
         }
+    }
+    
+    #[inline(always)]
+    pub fn size(&self) -> usize {
+        self.count
     }
 }
