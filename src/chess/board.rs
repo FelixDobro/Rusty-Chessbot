@@ -1,16 +1,21 @@
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
+use std::sync::atomic::AtomicUsize;
 use std::backtrace::Backtrace;
 use std::error::Error;
 use std::ffi::FromBytesUntilNulError;
 use std::io::StdoutLock;
+use std::sync::Arc;
 use std::time::Instant;
 
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
 use crate::chess::chessMove::MoveList;
+use crate::chess::constants::{*};
 use crate::chess::constants::Color::Empty as EmptyC;
 use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::Piece::*;
-use crate::chess::{chessMove::Move, constants::*};
+use crate::chess::{chessMove::Move};
 
 #[derive(Copy, Clone, Debug)]
 #[repr(align(64))]
@@ -188,16 +193,19 @@ impl Board {
     pub fn sq_attacked_by<S: Side>(&self, sq: Square) -> bool {
         let attacker_pawns = self.piece_bb[S::OFFSET + Pawn.index()];
         if (PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & attacker_pawns) > 0u64 {
+
             return true;
         }
 
         let attacker_knights = self.piece_bb[S::OFFSET + Knight.index()];
         if (KNIGHT_PATTERNS[sq as usize] & attacker_knights) > 0u64 {
+
             return true;
         }
 
         let attacking_king = self.piece_bb[S::OFFSET + King.index()];
         if (KING_PATTERNS[sq as usize] & attacking_king) > 064 {
+
             return true;
         }
 
@@ -205,6 +213,7 @@ impl Board {
             self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Bishop.index()];
 
         if (self.diag_lines_w_bound(sq) & attack_bishop_queens) > 0u64 {
+
             return true;
         }
 
@@ -219,7 +228,7 @@ impl Board {
     }
 
     #[inline(always)]
-    fn get_king_square<S: Side>(&self) -> Square {
+    pub fn get_king_square<S: Side>(&self) -> Square {
         Square::from_u8(self.piece_bb[S::OFFSET + King.index()].trailing_zeros() as u8)
     }
 
@@ -247,7 +256,61 @@ impl Board {
         self.rook_moves::<S>(&mut move_list);
         self.queen_moves::<S>(&mut move_list);
         self.king_moves::<S>(&mut move_list);
+        self.castling_moves::<S>(&mut move_list);
         move_list
+    }
+    
+    #[inline(always)]
+    pub fn castling_moves<S: Side>(&self, move_list: &mut MoveList) {
+        
+        
+        
+        if !self.sq_attacked_by::<S::OPPOSITE>(Square::E1) {
+            if self.castling_rights & CASTLING_RIGHTS::KingCastleWhite.index() != 0 {
+            if self.occupied & WHITE_KING_CASTLE_BLOCKERS == 0 {
+                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F1)) 
+                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G1))
+                {
+                    move_list.push(Move::new(0, 0, Move::KING_CASTLE));
+                }
+                }
+            }
+
+            if self.castling_rights & CASTLING_RIGHTS::QueenCastleWhite.index() != 0 {
+            if self.occupied & WHITE_QUEEN_CASTLE_BLOCKERS == 0 {
+                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::B1)) 
+                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::C1))
+                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D1)) {
+                    move_list.push(Move::new(0, 0, Move::QUEEN_CASTLE));
+                }
+                }
+            }
+        }
+        
+
+        if !self.sq_attacked_by::<S::OPPOSITE>(Square::E1) {
+            if self.castling_rights & CASTLING_RIGHTS::KingCastleBlack.index() != 0 {
+            if self.occupied & BLACK_KING_CASTLE_BLOCKERS == 0 {
+                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F8)) 
+                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G8)) {
+                    move_list.push(Move::new(0, 0, Move::KING_CASTLE));
+                    }
+                }
+        }
+
+        
+
+        if self.castling_rights & CASTLING_RIGHTS::QueenCastleBlack.index() != 0 {
+            if self.occupied & BLACK_QUEEN_CASTLE_BLOCKERS == 0 {
+                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::B8)) 
+                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::C8))
+                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D8)) {
+                    move_list.push(Move::new(0, 0, Move::QUEEN_CASTLE));
+                }
+                }
+            }
+        }
+        
     }
 
     #[inline(always)]
@@ -419,6 +482,7 @@ impl Board {
         let mut left_promotions_cap = all_left_attacks & S::LAST_RANK;
 
         let all_right_attacks = attack_pattern_right & self.color_bb[S::OPPOSITE::INDEX];
+
         let mut right_attacks = all_right_attacks & !S::LAST_RANK;
         let mut right_promotions_cap = S::LAST_RANK & right_attacks;
 
@@ -454,7 +518,7 @@ impl Board {
         while left_attacks != 0 {
             let to_square = left_attacks.trailing_zeros() as i8;
             move_list.push(Move::new(
-                (to_square - S::UP - 1) as u16,
+                (to_square + S::DOWN_RIGHT) as u16,
                 to_square as u16,
                 Move::CAPTURE,
             ));
@@ -464,7 +528,7 @@ impl Board {
         while right_attacks != 0 {
             let to_square = right_attacks.trailing_zeros() as i8;
             move_list.push(Move::new(
-                (to_square - S::UP + 1) as u16,
+                (to_square + S::DOWN_LEFT) as u16,
                 to_square as u16,
                 Move::CAPTURE,
             ));
@@ -474,7 +538,7 @@ impl Board {
         while left_en_passants != 0 {
             let to_square = left_en_passants.trailing_zeros() as i8;
             move_list.push(Move::new(
-                (to_square - S::UP - 1) as u16,
+                (to_square + S::DOWN_RIGHT) as u16,
                 to_square as u16,
                 Move::EN_PASSANT,
             ));
@@ -484,7 +548,7 @@ impl Board {
         while right_en_passants != 0 {
             let to_square = right_en_passants.trailing_zeros() as i8;
             move_list.push(Move::new(
-                (to_square - S::UP + 1) as u16,
+                (to_square + S::DOWN_LEFT) as u16,
                 to_square as u16,
                 Move::EN_PASSANT,
             ));
@@ -493,7 +557,7 @@ impl Board {
 
         while left_promotions_cap != 0 {
             let to_square = left_promotions_cap.trailing_zeros() as i8;
-            let from_square = (to_square - S::UP - 1) as u16;
+            let from_square = (to_square + S::DOWN_RIGHT) as u16;
             move_list.push(Move::new(
                 from_square,
                 to_square as u16,
@@ -519,7 +583,7 @@ impl Board {
 
         while right_promotions_cap != 0 {
             let to_square = right_promotions_cap.trailing_zeros() as i8;
-            let from_square = (to_square - S::UP + 1) as u16;
+            let from_square = (to_square + S::DOWN_LEFT) as u16;
             move_list.push(Move::new(
                 from_square,
                 to_square as u16,
@@ -607,7 +671,7 @@ impl Board {
 
         self.castling_rights &= !CASTLING_RIGHTS[from as usize];
         self.turn = self.turn.opposite();
-
+        self.en_passant = 0;
         true
     }
 
@@ -624,20 +688,24 @@ impl Board {
         self.piece_bb[p.index() + S::OFFSET] ^= movement;
         self.occupied ^= movement;
 
+
+        let remove_board = EN_PASSANT_RM_SQUARES[to as usize];
+        self.occupied ^= remove_board | remove_board;
+        self.piece_bb[p.index() + S::OPPOSITE::OFFSET] ^= remove_board;
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
             self.piece_bb[p.index() + S::OFFSET] ^= movement;
-            self.occupied ^= movement;
+            self.occupied ^= movement | remove_board;
+            self.piece_bb[p.index() + S::OPPOSITE::OFFSET] ^= remove_board;
             return false;
         }
 
+        self.color_bb[S::OPPOSITE::INDEX] ^= remove_board;
+        
         self.color_bb[S::INDEX] ^= movement;
 
         self.piece[from as usize] = Empty;
         self.piece[to as usize] = p;
-
-        let captured_piece = EN_PASSANT_RM_SQUARES[to as usize];
-        self.piece_bb[Pawn.index() + self.turn.opposite().offset()] ^= captured_piece;
-        self.color_bb[S::OPPOSITE::INDEX] ^= captured_piece;
+        self.piece[remove_board.trailing_zeros() as usize] = Empty;
 
         self.en_passant = 0;
         self.turn = self.turn.opposite();
@@ -654,21 +722,20 @@ impl Board {
         let movement = from_board ^ to_board;
 
         let p_capturing = self.piece[from as usize];
+        let p_captured = self.piece[to as usize];
 
         self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
         self.occupied ^= from_board;
+        
+        self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
 
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
             self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
             self.occupied ^= from_board;
+            self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
             return false;
         }
 
-        let p_captured = self.piece[to as usize];
-
-        // bitboard updates
-
-        self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
 
         self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
         self.color_bb[S::INDEX] ^= movement;
@@ -698,17 +765,18 @@ impl Board {
         self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
         self.occupied ^= from_board;
 
+        let p_captured = self.piece[to as usize];
+        self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
+
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
             self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
             self.occupied ^= from_board;
+            self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
             return false;
         }
 
-        let p_captured = self.piece[to as usize];
-
         // bitboard updates
-
-        self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
+        
         self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
 
         self.piece[from as usize] = Empty;
@@ -756,7 +824,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn make_pl_move_copy(&mut self, m: Move) -> Option<Board> {
+    pub fn make_pl_move_copy(&self, m: Move) -> Option<Board> {
         let mut board = self.clone();
         let success = match self.turn {
             Color::White => board.make_pseudolegal_move::<WhiteSide>(m),
@@ -814,33 +882,42 @@ impl Board {
 
 
     pub fn perft_copy(&mut self, depth: u8) {
-        for m in self.generate_pseudolegals().as_sclice() {
 
-            let start = Instant::now();
+        let start = Instant::now();
+        let total_nodes: usize = self.generate_pseudolegals().as_sclice().par_iter()
+        .map(|m| 
+        {
             if let Some(mut new_board) = self.make_pl_move_copy(*m) {
                 let nodes = new_board.private_perft_copy(depth - 1);
-                let time = start.elapsed();
-            
-            println!("Move: {}, Depth: {} took {:?}, found nodes: {}", m, depth -1 ,time, nodes)
-        }
+                println!("Move: {}, found nodes: {}", m, nodes);
+                return nodes 
             }
-            
+            0
+        }
+        ).sum();
+        let time = start.elapsed();
+        println!("Found nodes: {}, time: {:?}", total_nodes, time);
         
     }
 
     fn private_perft_copy(&mut self, depth: u8) -> usize {
-        let moves =self.generate_pseudolegals();
-        let mut nodes = 0;
+        let moves = self.generate_pseudolegals();
+    
         if depth == 0 {
             return 1; 
         }
 
-        for m in moves.as_sclice() {
+        let mut nodes= self.generate_pseudolegals().as_sclice().par_iter()
+        .map(|m| 
+        {
             if let Some(mut new_board) = self.make_pl_move_copy(*m) {
-                nodes += new_board.private_perft_copy( depth -1);
+                let nodes = new_board.private_perft_copy(depth - 1);
+                return nodes 
             }
-            
+            0
         }
+        ).sum();
+
         return nodes
         
     }
@@ -856,7 +933,7 @@ impl Board {
     pub fn print(&self) -> () {
         println!("  A B C D E F G H");
         for rank in (0..8).rev() {
-            print!("{}", rank);
+            print!("{}", rank + 1);
             for file in 0..8 {
                 let piece = self.get_piece(Square::from_u8(rank * 8 + file));
 

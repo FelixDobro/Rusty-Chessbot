@@ -28,6 +28,12 @@ pub const FILE_F: u64 = 0x2020202020202020;
 pub const FILE_G: u64 = 0x4040404040404040;
 pub const FILE_H: u64 = 0x8080808080808080;
 
+
+pub const WHITE_KING_CASTLE_BLOCKERS: u64 = (1u64 << Square::F1.index()) | (1u64<< Square::G1.index()); 
+pub const BLACK_KING_CASTLE_BLOCKERS: u64 = (1u64 << Square::F8.index()) | (1u64<< Square::G8.index());
+pub const WHITE_QUEEN_CASTLE_BLOCKERS: u64 = (1u64 << Square::B1.index()) | (1u64 << Square::C1.index()) | (1u64 << Square::D1.index());
+pub const BLACK_QUEEN_CASTLE_BLOCKERS: u64 = (1u64 << Square::B8.index()) | (1u64 << Square::C8.index()) | (1u64 << Square::D8.index());
+
 // when performing a double move this table maps m.from sqaures to en_passant bitboards
 pub const EN_PESSANT_UPDATES: [u64; 64] = {
     let mut table: [u64; 64] = [0u64; 64];
@@ -395,6 +401,8 @@ pub const PAWN_ATTACKS: [[u64; 64]; 2] = {
     map
 };
 
+
+
 pub const KING_PATTERNS: [u64; 64] = {
     let mut map: [u64; 64] = [0u64; 64];
     let mut square = 0;
@@ -579,6 +587,8 @@ pub trait Side {
     const INDEX: usize;
     const OFFSET: usize;
     const UP: i8;
+    const DOWN_RIGHT: i8;
+    const DOWN_LEFT: i8;
     const LAST_RANK: u64;
     const DOUBLE_PUSH_RANK: u64;
     type OPPOSITE: Side;
@@ -599,6 +609,8 @@ impl Side for WhiteSide {
     const INDEX: usize = 0;
     const OFFSET: usize = 0;
     const UP: i8 = 8;
+    const DOWN_RIGHT: i8 = -7;
+    const DOWN_LEFT: i8 = -9;
     const LAST_RANK: u64 = RANK_8;
     const DOUBLE_PUSH_RANK: u64 = RANK_4;
     
@@ -629,6 +641,8 @@ impl Side for BlackSide {
     const INDEX: usize = 1;
     const OFFSET: usize = NUM_PIECES as usize;
     const UP: i8 = -8;
+    const DOWN_LEFT: i8 = 7;
+    const DOWN_RIGHT: i8 = 9;
     const LAST_RANK: u64 = RANK_1;
     const DOUBLE_PUSH_RANK: u64 = RANK_5;
     type OPPOSITE = WhiteSide;
@@ -640,13 +654,13 @@ impl Side for BlackSide {
     
     #[inline(always)]
     fn pawn_attack_pattern_l(bb: u64) -> u64 {
-        (bb >> 9)  & !FILE_A
+        (bb >> 9)  & !FILE_H
     }
 
     #[inline(always)]
     fn pawn_attack_pattern_r(bb: u64) -> u64 {
         
-        (bb >> 7) & !FILE_H
+        (bb >> 7) & !FILE_A
     }
 }
 
