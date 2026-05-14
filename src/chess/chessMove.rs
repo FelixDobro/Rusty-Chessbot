@@ -61,7 +61,7 @@ impl Move {
 
     #[inline(always)]
     pub fn is_simple_promo(self) -> bool {
-        (self.flags() >> 2) == 3
+        self.flags() < 12
     }
 
     #[inline(always)]

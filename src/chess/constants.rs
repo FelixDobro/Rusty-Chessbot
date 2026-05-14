@@ -1,6 +1,6 @@
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
-use std::sync::LazyLock;
+use std::{error::Error, sync::LazyLock};
 
 pub const NUM_PIECES: usize = 6;
 pub const NUM_COLORS: usize = 2;
@@ -98,6 +98,8 @@ pub const CASTLING_RIGHTS: [u8; 64] = {
             Square::A8 => CASTLING_RIGHTS::QueenCastleBlack.index(),
             Square::H1 => CASTLING_RIGHTS::KingCastleWhite.index(),
             Square::H8 => CASTLING_RIGHTS::KingCastleBlack.index(),
+            Square::E1 => CASTLING_RIGHTS::QueenCastleWhite.index() + CASTLING_RIGHTS::KingCastleWhite.index(),
+            Square::E8 => CASTLING_RIGHTS::QueenCastleBlack.index() + CASTLING_RIGHTS::KingCastleBlack.index(),
             _ => 0
 
         };
@@ -550,6 +552,29 @@ impl Square {
     pub const fn from_u8(value: u8) -> Self {
         
         unsafe { std::mem::transmute(value) }
+    }
+
+    #[inline(always)]
+    pub fn from_string(square: &str) -> Result<Square, Box<dyn std::error::Error>> {
+        let bytes = square.as_bytes();
+        if bytes.len() != 2 {
+            return Err("Expected 2 chars".into());
+        }
+
+        let file = bytes[0];
+        let file_value = file - 'a' as u8;
+        
+        let rank = bytes[1];
+
+        let rank_value = rank - b'0' - 1; 
+        let sqaure_index = rank_value * 8 + file_value;
+
+        if 0 < sqaure_index && sqaure_index < 64 {
+            return Ok(Self::from_u8(sqaure_index));
+        }
+
+        Err("Invalid Index".into())
+
     }
 }
 
