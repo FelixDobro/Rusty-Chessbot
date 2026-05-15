@@ -16,7 +16,7 @@ use std::f32::consts::E;
 
 impl Board {
 
-    pub fn generate_pseudolegals(&self) -> MoveList {
+    pub fn generate_pseudolegals(&self) -> MoveList<MOVE_GEN_SIZE> {
         match self.turn {
             White => self.pseudolegal_moves::<WhiteSide>(),
             Black => self.pseudolegal_moves::<BlackSide>(),
@@ -24,7 +24,7 @@ impl Board {
         }
     }
 
-    fn pseudolegal_moves<S: Side>(&self) -> MoveList {
+    fn pseudolegal_moves<S: Side>(&self) -> MoveList<MOVE_GEN_SIZE> {
         let mut move_list = MoveList::new();
         self.pawn_moves::<S>(&mut move_list);
         self.knight_moves::<S>(&mut move_list);
@@ -37,9 +37,8 @@ impl Board {
     }
     
     #[inline(always)]
-    pub fn castling_moves<S: Side>(&self, move_list: &mut MoveList) {
-        
-        
+    pub fn castling_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+    
         
         if !self.sq_attacked_by::<S::OPPOSITE>(Square::E1) {
             if self.castling_rights & CastlingRights::KingCastleWhite.index() != 0 {
@@ -88,7 +87,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn king_moves<S: Side>(&self, move_list: &mut MoveList) {
+    pub fn king_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut king_board = self.piece_bb[S::OFFSET + King.index()];
 
         while king_board != EMPTY_BB {
@@ -116,7 +115,7 @@ impl Board {
 
 
     #[inline(always)]
-    pub fn queen_moves<S: Side>(&self, move_list: &mut MoveList) {
+    pub fn queen_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut queen_board = self.piece_bb[S::OFFSET + Queen.index()];
 
         while queen_board != EMPTY_BB {
@@ -152,7 +151,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn rook_moves<S: Side>(&self, move_list: &mut MoveList) {
+    pub fn rook_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut rook_board = self.piece_bb[S::OFFSET + Rook.index()];
 
         while rook_board != EMPTY_BB {
@@ -183,7 +182,7 @@ impl Board {
 
 
     #[inline(always)]
-    pub fn bishop_moves<S: Side>(&self, move_list: &mut MoveList) {
+    pub fn bishop_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut bishop_board = self.piece_bb[S::OFFSET + Bishop.index()];
 
         while bishop_board != EMPTY_BB {
@@ -213,7 +212,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn knight_moves<S: Side>(&self, move_list: &mut MoveList) {
+    pub fn knight_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut knight_board = self.piece_bb[S::OFFSET + Knight.index()];
 
         while knight_board != EMPTY_BB {
@@ -240,7 +239,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn pawn_moves<S: Side>(&self, move_list: &mut MoveList) {
+    pub fn pawn_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
 
         let pawn_board = self.piece_bb[Pawn.index() + S::OFFSET];
 
@@ -443,6 +442,7 @@ impl Board {
         self.piece_bb[p.index() + S::OFFSET] ^= movement;
         self.occupied ^= movement;
         
+
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
 
             self.piece_bb[p.index() + S::OFFSET] ^= movement;
@@ -584,15 +584,14 @@ impl Board {
 
         let p_capturing = self.piece[from.usize()];
 
-        self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
+        self.piece_bb[p_capturing.index() + S::OFFSET] ^= from_board;
         self.occupied ^= from_board;
 
         let p_captured = self.piece[to.usize()];
-        
         self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
 
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
-            self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
+            self.piece_bb[p_capturing.index() + S::OFFSET] ^= from_board;
             self.occupied ^= from_board;
             self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
             return false;
@@ -612,9 +611,11 @@ impl Board {
             _ => panic!(),
         };
         self.piece[to.usize()] = promo;
+        self.piece_bb[promo.index() + S::OFFSET] ^= to_board;
 
         self.update_en_passant_hash();
         self.en_passant = EMPTY_BB;
+
         self.update_hash_caslte(self.castling_rights);
         self.castling_rights &= !CASTLING_RIGHTS[to.usize()];
         self.update_hash_caslte(self.castling_rights);
@@ -634,9 +635,13 @@ impl Board {
     #[inline(always)]
     fn castle<S: Side>(&mut self, m: Move) {
         let mechs = &CASTLING_TABLE[S::INDEX][(m.flags() & 1) as usize];
+
         self.update_hash_caslte(self.castling_rights);
+
+
         self.castling_rights &= !mechs.castling_rights_update;
         self.update_hash_caslte(self.castling_rights);
+    
         
         self.piece_bb[S::OFFSET + King.index()] ^= mechs.king_movement;
         self.piece_bb[S::OFFSET + Rook.index()] ^= mechs.rook_movement;

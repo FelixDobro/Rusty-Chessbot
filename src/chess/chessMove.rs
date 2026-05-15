@@ -2,6 +2,10 @@ use core::fmt;
 
 use crate::chess::square::Square;
 
+
+pub const MOVE_GEN_SIZE: usize = 256;
+pub const GAME_MOVES_SIZE: usize = 1024;
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct Move(u16);
@@ -89,18 +93,19 @@ impl fmt::Display for Move {
     }
 }
 
-const MAX_MOVES: usize = 256;
-
-pub struct MoveList {
-
-    moves: [Move; MAX_MOVES],
+#[derive(Copy, Clone, Debug)]
+pub struct MoveList<const N: usize> {
+    moves: [Move; N],
     count: usize,
 }
 
-impl MoveList {
+impl<const N: usize> MoveList<N> {
     
     pub fn new() -> Self {
-        Self { moves: [Move(0); MAX_MOVES], count: 0 }
+        Self {
+            moves: [Move(0); N],
+            count: 0 
+        }
     }
 
     #[inline(always)]
@@ -109,12 +114,12 @@ impl MoveList {
         self.count += 1;
     } 
 
-    pub fn as_sclice(&self) -> &[Move] {
+    pub fn as_slice(&self) -> &[Move] {
         &self.moves[0..self.count]
     }
 
     pub fn print_list(&self) {
-        for m in self.as_sclice() {
+        for m in self.as_slice() {
             println!("{}", m)
         }
     }

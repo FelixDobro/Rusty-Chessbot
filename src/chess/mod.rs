@@ -8,15 +8,60 @@ pub mod constants;
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
+use std::default;
 use crate::chess::bitboard::{*};
 use crate::chess::bitboard::EMPTY as EMPTY_BB;
 
+use crate::chess::chessMove::{MoveList, GAME_MOVES_SIZE};
+use crate::chess::hash::HashList;
 use crate::chess::square::Square;
 
 use crate::chess::constants::{*};
 use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::{Side, BlackSide, WhiteSide, Piece, CastlingRights, Color};
 use crate::chess::constants::Piece::{*};
+
+
+#[derive(Copy, Clone, Debug)]
+#[repr(align(64))]
+pub struct Game {
+
+    board: Board,
+    fullmove_counter: u16,
+    positions: HashList<GAME_MOVES_SIZE>,
+    move_lists: MoveList<GAME_MOVES_SIZE>
+}
+
+
+impl Game {
+
+    pub fn default() -> Self {
+
+        Game { 
+            board: Board::default(),
+            fullmove_counter: 1,
+            positions: HashList::new(),
+            move_lists: MoveList::new()
+        }
+    }
+
+
+    pub fn from_fen(fen: &str) -> Result<Self, FenError> {
+        let mut splitted = fen.split(" ").collect::<Vec<&str>>();
+        let mut fullmoves_b = 0;
+
+        if let Some(&fullmove) = splitted.get(6){
+            if let Ok(num) = fullmove.parse::<u16>() {
+                fullmoves_b = num;
+            }
+        }
+        let board = Board::default();
+
+        Ok(
+            Game { board, fullmove_counter: fullmoves_b, positions: HashList::new(), move_lists: MoveList::new() }
+        )
+    }
+}
 
 
 #[derive(Copy, Clone, Debug)]
@@ -32,7 +77,7 @@ pub struct Board {
     pub turn: Color,
     pub en_passant: Bitboard,
     pub castling_rights: u8,
-    halfmoves: u8,
+    halfmoves: u16,
     hash: u64
 }
 
@@ -100,7 +145,7 @@ impl Board {
         let mut turn: Color;
         let mut en_passant_right = EMPTY_BB;
         let mut castling_rights = 0;
-        let mut halfmoves_b: u8 = 0;
+        let mut halfmoves_b: u16 = 0;
         let mut fullmoves_b = 0; 
 
 
@@ -178,6 +223,7 @@ impl Board {
             return Err(FenError::InvalidNumSections);
         }
 
+        
         if let Some(en_passant) = splitted.next() {
             en_passant_right = match en_passant {
                 "-" => EMPTY_BB,
@@ -191,18 +237,17 @@ impl Board {
                 }
             };
         }
+     
 
         if let Some(halfmoves) = splitted.next() {
-            if let Ok(num) = halfmoves.parse::<u8>() {
+            if let Ok(num) = halfmoves.parse::<u16>() {
                 halfmoves_b = num
             }
             else {
                 return Err(FenError::HalfMove);
             }
         }
-        else {
-            return Err(FenError::InvalidNumSections)
-        }
+    
     
         if let Some(fullmove) = splitted.next() {
             if let Ok(num) = fullmove.parse::<u16>() {
@@ -212,9 +257,7 @@ impl Board {
                 return Err(FenError::FullMove);
             }
         }
-        else {
-            return Err(FenError::InvalidNumSections)
-        }
+
 
         let mut board = Board { piece_bb, color_bb, occupied, piece: piece_8_board, turn, en_passant: en_passant_right, castling_rights, halfmoves: halfmoves_b, hash: 0};
         board.hash = board.calculate_hash();  
@@ -224,6 +267,11 @@ impl Board {
     #[inline(always)]
     pub fn get_hash(&self) -> u64 {
         self.hash
+    }
+
+    #[inline(always)]
+    pub fn get_halfmoves(&self) -> u16 {
+        self.halfmoves
     }
 
     #[inline(always)]

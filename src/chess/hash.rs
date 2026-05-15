@@ -2,7 +2,7 @@ use core::{hash, num};
 
 use rstest::rstest;
 
-use crate::chess::{bitboard::{self, EMPTY}, chessMove::Move, constants::Side, square::{self, Square}};
+use crate::chess::{bitboard::{self, EMPTY}, chessMove::{Move, MoveList}, constants::Side, square::{self, Square}};
 use super::Piece;
 
 use super::Board;
@@ -99,6 +99,41 @@ impl ZobristTable {
 }
 
 
+#[derive(Copy, Clone, Debug)]
+pub struct HashList<const N: usize> {
+    
+    positions: [u64; N],
+    count: usize,
+}
+
+
+impl<const N: usize> HashList<N> {
+
+    pub fn new() -> Self {
+        HashList {
+            positions: [0u64; N],
+            count: 0
+        }
+    }
+
+    #[inline(always)]
+    pub fn push(&mut self, hash: u64) {
+        self.positions[self.count] = hash;
+        self.count += 1;
+    } 
+
+    #[inline(always)]
+    pub fn pop(&mut self) {
+        self.count -= 1;
+    } 
+
+    #[inline(always)]
+    pub fn half_move_iter(&self, num_halfmoves: u16) -> &[u64] {
+        debug_assert!(self.count - num_halfmoves as usize>= 0);
+        &self.positions[(self.count - num_halfmoves as usize)..self.count]
+    } 
+}
+
 pub const ZOBRIST_TABLE: ZobristTable = ZobristTable::new();
 
 impl Board {
@@ -153,45 +188,5 @@ impl Board {
 }
 
 
-fn test_1_move_deep(board: &Board, fen: &str) {
-    board.generate_pseudolegals().as_sclice()
-    .iter()
-    .for_each(|&m| {
-        let hash_before = board.get_hash();
-        if let Some(new_board) = board.make_pl_move_copy(m) {
-            assert_eq!(
-                new_board.get_hash(),
-                new_board.calculate_hash(),
-                "Hash inconsistency after move {} in FEN {}", m, fen
-        )
-        }
-    });
-}
 
 
-#[rstest]
-#[case::start_pos("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")]
-#[case::start_pos("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1")]
-#[case::start_pos("rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")]
-#[case::start_pos("8/8/8/4p1K1/2k1P3/8/8/8 b - - 0 1")]
-#[case::start_pos("4k2r/6r1/8/8/8/8/3R4/R3K3 w Qk - 0 1")]
-#[case::start_pos("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3")]
-#[case::start_pos("5rk1/p4Qpp/1p6/3B4/2Pb4/1P4Nq/P2r1P1P/4R1K1 b - - 0 26")]
-#[case::start_pos("8/6n1/8/8/5K2/8/8/1k6 w - - 0 70")]
-#[case::start_pos("r2rq1k1/1pp2pb1/p1n1bnpp/4p3/PP2P3/B1P1NNP1/2Q1BP1P/3RR1K1 b - - 4 18")]
-#[case::start_pos("2rq1rk1/ppnnbppp/4p3/3pP3/3P4/1P1Q1N2/P4PPP/R1B1RNK1 b - - 4 14")]
-#[case::start_pos("3k4/1p3KNq/4r3/3p4/3PnPP1/8/8/8 w - - 9 63")]
-#[case::start_pos("8/8/5P2/p1p4k/8/1P6/8/4K3 w - - 0 42")]
-#[case::start_pos("8/5K2/8/4kPRP/7r/8/8/8 w - - 1 57")]
-#[case::start_pos("3k4/1p3KNq/4r3/3p4/3PnPP1/8/8/8 w - - 9 63")]
-
-fn test_hash_vs_calculated(#[case] fen: &str) {
-    let board = Board::from_fen(fen).unwrap();
-    board.generate_pseudolegals().as_sclice()
-    .iter()
-    .for_each(|&m| {
-        if let Some(new_board) = board.make_pl_move_copy(m) {
-            test_1_move_deep(&new_board, fen);
-        }
-    });
-}

@@ -94,14 +94,14 @@ pub const CASTLING_TABLE: [[CastlingMechanics; 2]; 2] =
             Square::F1,
             Square::E1,
             Square::G1,
-            CastlingRights::KingCastleWhite.index()
+            CastlingRights::QueenCastleWhite.index() + CastlingRights::KingCastleWhite.index()
         ),
         CastlingMechanics::new(
             Square::A1,
             Square::D1,
             Square::E1,
             Square::C1,
-            CastlingRights::QueenCastleWhite.index()
+            CastlingRights::QueenCastleWhite.index() + CastlingRights::KingCastleWhite.index()
         )
     ],
     [
@@ -110,14 +110,14 @@ pub const CASTLING_TABLE: [[CastlingMechanics; 2]; 2] =
             Square::F8,
             Square::E8,
             Square::G8,
-            CastlingRights::KingCastleBlack.index()
+            CastlingRights::QueenCastleBlack.index() + CastlingRights::KingCastleBlack.index()
         ),
         CastlingMechanics::new(
             Square::A8,
             Square::D8,
             Square::E8,
             Square::C8,
-            CastlingRights::QueenCastleBlack.index()
+            CastlingRights::QueenCastleBlack.index() + CastlingRights::KingCastleBlack.index()
         )
     ]
 ];

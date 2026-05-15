@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 rayon = "1.12.0"
 rstest = "0.26.1"
+rstest_reuse = "0.7.0"
