@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::chess::constants::Square;
+use crate::chess::square::Square;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(transparent)]
@@ -34,13 +34,13 @@ impl Move {
 
 
     #[inline(always)]
-    pub fn from(self) -> u8 {
-        (self.0 & Move::FROM_MASK) as u8
+    pub fn from(self) -> Square {
+        Square::from_u16(self.0 & Move::FROM_MASK)
     }
 
     #[inline(always)]
-    pub fn to(self) -> u8 {
-        ((self.0 & Move::TO_MASK) >> 6) as u8
+    pub fn to(self) -> Square {
+        Square::from_u16((self.0 & Move::TO_MASK) >> 6)
     }
 
     #[inline(always)]
@@ -85,7 +85,7 @@ impl Move {
 impl fmt::Display for Move {
 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}{:?} {}", Square::from_u8(self.from()), Square::from_u8(self.to()), self.flags())
+        write!(f, "{}{} {}", self.from(), self.to(), self.flags())
     }
 }
 

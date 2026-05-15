@@ -1,7 +1,7 @@
 use std::time::Instant;
 use rstest::rstest;
 use rayon::prelude::*;
-use chess_bot::chess::board::Board;
+use chess_bot::chess::Board;
 
 pub fn perft_copy_single_threaded(board: &Board, depth: u8) -> usize{
 
@@ -96,4 +96,10 @@ fn private_perft_copy(board: &Board, depth: u8) -> usize {
 fn test_perft(#[case] fen: &str, #[case] depth: u8, #[case] expected_nodes: usize) {
     let board = Board::from_fen(fen).unwrap();
     assert_eq!(perft_copy(&board, depth), expected_nodes);
+}
+
+#[cfg(test)]
+fn test_perft_default() {
+    let board = Board::default();
+    assert_eq!(perft_copy(&board, 5), 4_865_609);
 }

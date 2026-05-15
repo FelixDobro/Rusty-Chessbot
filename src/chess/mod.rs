@@ -1,31 +1,39 @@
-mod move_gen;
-mod hash;
+pub mod move_gen;
+pub mod hash;
+pub mod square;
+pub mod chessMove;
+pub mod bitboard;
+pub mod constants;
 
-use core::num;
+
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
-use std::fmt::Error;
-use crate::chess::constants::{*};
+use crate::chess::bitboard::{*};
+use crate::chess::bitboard::EMPTY as EMPTY_BB;
 
+use crate::chess::square::Square;
+
+use crate::chess::constants::{*};
 use crate::chess::constants::Color::{Black, White};
-use crate::chess::constants::Piece::*;
+use crate::chess::constants::{Side, BlackSide, WhiteSide, Piece, CastlingRights, Color};
+use crate::chess::constants::Piece::{*};
 
 
 #[derive(Copy, Clone, Debug)]
 #[repr(align(64))]
 
 pub struct Board {
-    piece_bb: [u64; 12],
-    color_bb: [u64; 2],
-    occupied: u64,
+    piece_bb: [Bitboard; 12],
+    color_bb: [Bitboard; 2],
+    occupied: Bitboard,
 
     piece: [Piece; 64],
 
     pub turn: Color,
-    pub en_passant: u64,
+    pub en_passant: Bitboard,
     pub castling_rights: u8,
     halfmoves: u8,
-    fullmoves: u16,
+    hash: u64
 }
 
 
@@ -44,25 +52,25 @@ pub enum FenError {
 impl Board {
 
     pub fn default() -> Self {
-        Board {
+        let mut board = Board {
             piece_bb: [
-                0x000000000000FF00,
-                0x0000000000000024,
-                0x0000000000000042,
-                0x0000000000000081,
-                0x0000000000000008,
-                0x0000000000000010,
-                0x00FF000000000000,
-                0x2400000000000000,
-                0x4200000000000000,
-                0x8100000000000000,
-                0x0800000000000000,
-                0x1000000000000000,
+                PAWN_W_DEFAULT,
+                BISHOP_W_DEFAULT,
+                KNIGHT_W_DEFAULT,
+                ROOK_W_DEFAULT,
+                QUEEN_W_DEFAULT,
+                KING_W_DEFAULT,
+                PAWN_B_DEFAULT,
+                BISHOP_B_DEFAULT,
+                KNIGHT_B_DEFAULT,
+                ROOK_B_DEFAULT,
+                QUEEN_B_DEFAULT,
+                KING_B_DEFAULT,
             ],
 
-            color_bb: [0x000000000000FFFF, 0xFFFF000000000000],
+            color_bb: [DEFAULT_COLOR_W, DEFAULT_COLOR_B],
 
-            occupied: 0x000000000000FFFF | 0xFFFF000000000000,
+            occupied: DEFAULT_OCCUPIED,
 
             piece: [
                 Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook, Pawn, Pawn, Pawn, Pawn,
@@ -74,21 +82,23 @@ impl Board {
             ],
 
             turn: White,
-            en_passant: 0,
+            en_passant: EMPTY_BB,
             castling_rights: 0xF,
-            fullmoves: 1,
-            halfmoves: 0
-        }
+            halfmoves: 0,
+            hash: 0
+        };
+        board.hash = board.calculate_hash();
+        board
     }
 
 
     pub fn from_fen(fen_string: &str) -> Result<Board, FenError> {
-        let mut piece_bb = [0u64; 12];
+        let mut piece_bb = [EMPTY_BB; 12];
         let mut piece_8_board = [Empty; 64];
-        let mut color_bb = [0u64; 2];
-        let mut occupied = 0u64;
+        let mut color_bb = [EMPTY_BB; 2];
+        let mut occupied = EMPTY_BB;
         let mut turn: Color;
-        let mut en_passant_right = 0u64;
+        let mut en_passant_right = EMPTY_BB;
         let mut castling_rights = 0;
         let mut halfmoves_b: u8 = 0;
         let mut fullmoves_b = 0; 
@@ -102,10 +112,10 @@ impl Board {
             if num_ranks > 7 {return Err(FenError::InvalidNumRanks)}
         
             for rank in ranks.split("/") {
-                let mut square_offset = (7 - num_ranks) * 8;
+                let mut square_offset: u8 = (7 - num_ranks) * 8;
                 for c in rank.chars(){ 
                     if let Some(number) = c.to_digit(10) {
-                        square_offset += number; 
+                        square_offset += number as u8; 
                     }
                     else {
                         let color = if c.is_uppercase() {White} else {Black};
@@ -120,11 +130,11 @@ impl Board {
                             _ => return Err(FenError::InvalidPiece)
                         };
 
-                        let appears_board = 1u64 << square_offset;
+                        let appears_board = Square::from_u8(square_offset).to_bitboard();
     
                         piece_8_board[square_offset as usize] = piece;
                         piece_bb[piece.index() + color.offset()] ^= appears_board;
-                        color_bb[color.index()] ^= appears_board;  
+                        color_bb[color.index()] ^= appears_board; 
                         occupied ^= appears_board;
                         square_offset += 1;
 
@@ -155,10 +165,10 @@ impl Board {
             
             for right in rights.chars() {
                 castling_rights += match right {
-                    'K' => CASTLING_RIGHTS::KingCastleWhite as u8,
-                    'Q' => CASTLING_RIGHTS::QueenCastleWhite as u8,
-                    'k' => CASTLING_RIGHTS::KingCastleBlack as u8,
-                    'q' => CASTLING_RIGHTS::QueenCastleBlack as u8,
+                    'K' => CastlingRights::KingCastleWhite as u8,
+                    'Q' => CastlingRights::QueenCastleWhite as u8,
+                    'k' => CastlingRights::KingCastleBlack as u8,
+                    'q' => CastlingRights::QueenCastleBlack as u8,
                     '-' => 0,
                     _ => return Err(FenError::Castling)
                 }
@@ -170,10 +180,10 @@ impl Board {
 
         if let Some(en_passant) = splitted.next() {
             en_passant_right = match en_passant {
-                "-" => 0,
+                "-" => EMPTY_BB,
                 _ => {
                     if let Ok(square) = Square::from_string(en_passant) {
-                        1u64 << (square as u8)
+                        square.to_bitboard()
                     }
                     else {
                         return Err(FenError::EnPassant)
@@ -206,21 +216,32 @@ impl Board {
             return Err(FenError::InvalidNumSections)
         }
 
-        Ok(Board { piece_bb, color_bb, occupied, piece: piece_8_board, turn, en_passant: en_passant_right, castling_rights, halfmoves: halfmoves_b, fullmoves: fullmoves_b})
+        let mut board = Board { piece_bb, color_bb, occupied, piece: piece_8_board, turn, en_passant: en_passant_right, castling_rights, halfmoves: halfmoves_b, hash: 0};
+        board.hash = board.calculate_hash();  
+        Ok(board)
+    }
 
+    #[inline(always)]
+    pub fn get_hash(&self) -> u64 {
+        self.hash
+    }
+
+    #[inline(always)]
+    pub fn get_enpassant(&self) -> Bitboard {
+        self.en_passant
     }
 
 
-    pub fn get_bit_board(&self, i: usize) -> u64 {
+    pub fn get_bit_board(&self, i: usize) -> Bitboard {
         self.piece_bb[i]
     }
 
-    pub fn get_occupied(&self) -> u64 {
+    pub fn get_occupied(&self) -> Bitboard {
         self.occupied
     }
 
     #[inline(always)]
-    pub fn knight_pattern<S: Side>(&self) -> u64 {
+    pub fn knight_pattern<S: Side>(&self) -> Bitboard {
         let board = self.piece_bb[Knight.index() + S::OFFSET];
 
         // 2 horizontal 1 vertical
@@ -236,41 +257,41 @@ impl Board {
         final_pattern & !self.color_bb[S::INDEX]
     }
 
-    pub fn black_pieces(&self) -> u64 {
+    pub fn black_pieces(&self) -> Bitboard {
         self.color_bb[BlackSide::INDEX]
     }
 
-    pub fn white_pieces(&self) -> u64 {
+    pub fn white_pieces(&self) -> Bitboard {
         self.color_bb[WhiteSide::INDEX]
     }
 
-    pub fn knight_pseudolegals<S: Side>(&self) -> u64 {
+    pub fn knight_pseudolegals<S: Side>(&self) -> Bitboard {
         self.knight_pattern::<S>() & !self.color_bb[S::INDEX]
     }
 
-    pub fn king_pattern<S: Side>(&self) -> u64 {
+    pub fn king_pattern<S: Side>(&self) -> Bitboard {
         let board = self.piece_bb[S::OFFSET + King.index()];
-        let king_pattern = KING_PATTERNS[board.trailing_zeros() as usize];
+        let king_pattern = KING_PATTERNS[board.lsb().usize()];
         king_pattern
     }
 
-    pub fn king_pseudolegals<S: Side>(&self) -> u64 {
+    pub fn king_pseudolegals<S: Side>(&self) -> Bitboard {
         self.king_pattern::<S>() & !self.color_bb[S::INDEX]
     }
 
-    pub fn pawn_single_push<S: Side>(&self) -> u64 {
+    pub fn pawn_single_push<S: Side>(&self) -> Bitboard {
         let board = self.piece_bb[S::OFFSET + Pawn.index()];
         S::shift_up(board) & !self.occupied
     }
 
-    pub fn pawn_double_push<S: Side>(&self) -> u64 {
+    pub fn pawn_double_push<S: Side>(&self) -> Bitboard {
         let board = self.pawn_single_push::<S>();
         S::shift_up(board) & !self.occupied
     }
 
-    pub fn w_pawn_attacks(&self) -> u64 {
+    pub fn w_pawn_attacks(&self) -> Bitboard {
         let forward = self.piece_bb[White.offset() + Pawn.index()] << 8;
-        let mut result = 0u64;
+        let mut result = EMPTY_BB;
         let black_pieces = self.black_pieces();
         let left_side = (forward << 1) & !FILE_A;
         result |= left_side & (black_pieces | self.en_passant);
@@ -280,9 +301,9 @@ impl Board {
         result
     }
 
-    pub fn b_pawn_attacks(&self) -> u64 {
+    pub fn b_pawn_attacks(&self) -> Bitboard {
         let forward = self.piece_bb[Black.offset() + Pawn.index()] >> 8;
-        let mut result = 0u64;
+        let mut result = EMPTY_BB;
         let white_pieces = self.white_pieces();
         let left_side = (forward << 1) & !FILE_A;
         result |= left_side & (white_pieces | self.en_passant);
@@ -292,62 +313,62 @@ impl Board {
         result
     }
 
-    pub fn rook_pseudolegals<S: Side>(&self) -> u64 {
+    pub fn rook_pseudolegals<S: Side>(&self) -> Bitboard {
         let mut rooks = self.piece_bb[S::OFFSET + Rook.index()];
-        let mut moves = 0u64;
-        while rooks != 0 {
-            let sq = rooks.trailing_zeros() as u64;
+        let mut moves = EMPTY_BB;
+        while rooks != EMPTY_BB {
+            let sq = rooks.lsb().u8();
             let mask = STRAIGHT_LINES[sq as usize];
-            let index = unsafe { _pext_u64(self.occupied, mask) };
+            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
             moves |= STRAIGHT_LINES_MAGIC[sq as usize][index as usize];
-            rooks &= rooks - 1;
+            rooks.pop_lsb();
         }
         moves & !self.color_bb[S::INDEX]
     }
 
-    pub fn bishop_pseudolegals<S: Side>(&self) -> u64 {
+    pub fn bishop_pseudolegals<S: Side>(&self) -> Bitboard {
         let mut bishops = self.piece_bb[S::OFFSET + Bishop.index()];
 
-        let mut moves = 0u64;
-        while bishops != 0 {
-            let sq = bishops.trailing_zeros() as u64;
-            let mask = DIAGONAL_LINES[sq as usize];
-            let index = unsafe { _pext_u64(self.occupied, mask) };
-            moves |= DIAG_LINES_MAGIC[sq as usize][index as usize];
-            bishops &= bishops - 1;
+        let mut moves = EMPTY_BB;
+        while bishops != EMPTY_BB {
+            let sq = bishops.lsb();
+            let mask = DIAGONAL_LINES[sq.usize()];
+            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
+            moves |= DIAG_LINES_MAGIC[sq.usize()][index as usize];
+            bishops.pop_lsb();
         }
 
         moves & !self.color_bb[S::INDEX]
     }
 
-    pub fn diag_lines_w_bound(&self, sq: Square) -> u64 {
-        let mask = DIAGONAL_LINES[sq as usize];
-        let index = unsafe { _pext_u64(self.occupied, mask) };
-        DIAG_LINES_MAGIC[sq as usize][index as usize]
+    pub fn diag_lines_w_bound(&self, sq: Square) -> Bitboard {
+        let mask = DIAGONAL_LINES[sq.usize()];
+        let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
+        DIAG_LINES_MAGIC[sq.usize()][index as usize]
     }
 
-    pub fn straight_lines_w_bound(&self, sq: Square) -> u64 {
-        let mask = STRAIGHT_LINES[sq as usize];
-        let index = unsafe { _pext_u64(self.occupied, mask) };
-        STRAIGHT_LINES_MAGIC[sq as usize][index as usize]
+    pub fn straight_lines_w_bound(&self, sq: Square) -> Bitboard {
+        let mask = STRAIGHT_LINES[sq.usize()];
+        let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
+        STRAIGHT_LINES_MAGIC[sq.usize()][index as usize]
     }
 
     pub fn sq_attacked_by<S: Side>(&self, sq: Square) -> bool {
         let attacker_pawns = self.piece_bb[S::OFFSET + Pawn.index()];
-        if (PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & attacker_pawns) > 0u64 {
+        if (PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & attacker_pawns) > EMPTY_BB {
 
             return true;
         }
 
         let attacker_knights = self.piece_bb[S::OFFSET + Knight.index()];
-        if (KNIGHT_PATTERNS[sq as usize] & attacker_knights) > 0u64 {
+        if (KNIGHT_PATTERNS[sq.usize()] & attacker_knights) > EMPTY_BB {
 
             return true;
         }
 
         let attacking_king = self.piece_bb[S::OFFSET + King.index()]; 
         
-        if (KING_PATTERNS[sq as usize] & attacking_king) > 0u64 {
+        if (KING_PATTERNS[sq.usize()] & attacking_king) > EMPTY_BB {
             
             return true;
         }
@@ -355,7 +376,7 @@ impl Board {
         let attack_bishop_queens =
             self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Bishop.index()];
 
-        if (self.diag_lines_w_bound(sq) & attack_bishop_queens) > 0u64 {
+        if (self.diag_lines_w_bound(sq) & attack_bishop_queens) > EMPTY_BB {
 
             return true;
         }
@@ -363,7 +384,7 @@ impl Board {
         let attack_rook_queens =
             self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Rook.index()];
 
-        if (self.straight_lines_w_bound(sq) & attack_rook_queens) > 0u64 {
+        if (self.straight_lines_w_bound(sq) & attack_rook_queens) > EMPTY_BB {
 
 
             return true;
@@ -375,19 +396,19 @@ impl Board {
     #[inline(always)]
     pub fn get_king_square<S: Side>(&self) -> Square {
 
-        Square::from_u8(self.piece_bb[S::OFFSET + King.index()].trailing_zeros() as u8)
+        Square::from_u8(self.piece_bb[S::OFFSET + King.index()].lsb().u8())
     }
 
     pub fn get_piece(&self, square: Square) -> Piece {
-        self.piece[square as usize]
+        self.piece[square.usize()]
     }
 
     pub fn get_piece_usize(&self, square: Square) -> usize {
         return self.get_piece(square) as usize;
     }
 
-    pub fn get_color(&self, square: u8) -> Color {
-        if self.piece_bb[0] & (1u64 << square) != 0 {
+    pub fn get_color(&self, square: Square) -> Color {
+        if self.piece_bb[0] & (square.to_bitboard()) != EMPTY_BB {
             return White;
         } else {
             return Black;
@@ -405,7 +426,7 @@ impl Board {
                 match piece {
                     Empty => print!(" ."),
                     _ => {
-                        let color = self.get_color(rank * 8 + file);
+                        let color = self.get_color(Square::from_u8(rank * 8 + file));
 
                         let symbol = SYMBOLS[piece.index() + color.offset()];
                         print!(" {}", symbol.to_string());
@@ -421,7 +442,7 @@ impl Board {
 
     pub fn print_bitboards(&self, color: Color) {
         for i in 0..6 {
-            print_bitboard(self.piece_bb[i + color.offset()]);
+            self.piece_bb[i + color.offset()].print();
         }
     }
 
