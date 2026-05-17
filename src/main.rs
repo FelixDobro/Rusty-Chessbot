@@ -5,6 +5,7 @@ mod evaluation;
 mod move_sorting;
 mod uci;
 
+use core::time;
 use std::error::Error;
 use std::sync::LazyLock;
 use crate::chess::Board;
@@ -75,12 +76,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut mangager = UCIManager::new(
         NegaMaxCopy,
         MaterialEvaluator, 
-        NoSorting
+        NumericSorting
     );
 
     mangager.start_protocol();
-
-
+    
     // let m1 = Move::new(Square::E2, Square::E4, 1);
     // let m2 = Move::new(Square::B7, Square::B5,1);
     // let m3 = Move::new(Square::F1, Square::B5, 4);

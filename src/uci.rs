@@ -94,7 +94,7 @@ Sort: MoveSortingAlgorithm,
                                     Some("moves") => {
                                         while let Some(token) = tokens.next() {
                                     
-                                            self.game.make_pl_move(Move::from_string(token, &self.game)?);
+                                            self.game.make_pl_move_copy(Move::from_string(token, &self.game)?);
                                             
                                         }
                                     }
