@@ -99,7 +99,7 @@ impl ZobristTable {
 }
 
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub struct HashList<const N: usize> {
     
     positions: [u64; N],
@@ -128,10 +128,16 @@ impl<const N: usize> HashList<N> {
     } 
 
     #[inline(always)]
-    pub fn half_move_iter(&self, num_halfmoves: u16) -> &[u64] {
-        debug_assert!(self.count - num_halfmoves as usize>= 0);
-        &self.positions[(self.count - num_halfmoves as usize)..self.count]
+    pub fn half_move_iter(&self, num_halfmoves: u64) -> &[u64] {
+        let num = self.count.saturating_sub(num_halfmoves as usize);
+        &self.positions[num..self.count]
     } 
+
+    pub fn print(&self) {
+        for m in self.positions {
+            println!("{}", m)
+        }
+    }
 }
 
 pub const ZOBRIST_TABLE: ZobristTable = ZobristTable::new();

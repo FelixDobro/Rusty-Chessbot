@@ -29,6 +29,12 @@ impl Bitboard {
 
 
     #[inline(always)]
+    pub const fn count_ones(self) -> u32 {
+        self.0.count_ones()
+    }
+
+
+    #[inline(always)]
     pub fn lsb(self) -> Square {
         Square::from_u8(self.0.trailing_zeros() as u8)
     }

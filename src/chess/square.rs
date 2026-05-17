@@ -153,9 +153,8 @@ impl Square {
 
 impl fmt::Display for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Wir nehmen den Byte-Wert von 'a' (97) und addieren 0-7
+
         let file_char = (b'a' + self.file()) as char;
-        // Wir nehmen den Byte-Wert von '1' (49) und addieren 0-7
         let rank_char = (b'1' + self.rank()) as char;
         
         write!(f, "{}{}", file_char, rank_char)

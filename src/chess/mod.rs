@@ -4,15 +4,17 @@ pub mod square;
 pub mod chessMove;
 pub mod bitboard;
 pub mod constants;
+pub mod game;
 
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
-use std::default;
+use std::error::Error;
+use std::{default, str};
 use crate::chess::bitboard::{*};
 use crate::chess::bitboard::EMPTY as EMPTY_BB;
 
-use crate::chess::chessMove::{MoveList, GAME_MOVES_SIZE};
+use crate::chess::chessMove::{GAME_MOVES_SIZE, Move, MoveList};
 use crate::chess::hash::HashList;
 use crate::chess::square::Square;
 
@@ -22,49 +24,11 @@ use crate::chess::constants::{Side, BlackSide, WhiteSide, Piece, CastlingRights,
 use crate::chess::constants::Piece::{*};
 
 
-#[derive(Copy, Clone, Debug)]
-#[repr(align(64))]
-pub struct Game {
-
-    board: Board,
-    fullmove_counter: u16,
-    positions: HashList<GAME_MOVES_SIZE>,
-    move_lists: MoveList<GAME_MOVES_SIZE>
-}
 
 
-impl Game {
-
-    pub fn default() -> Self {
-
-        Game { 
-            board: Board::default(),
-            fullmove_counter: 1,
-            positions: HashList::new(),
-            move_lists: MoveList::new()
-        }
-    }
 
 
-    pub fn from_fen(fen: &str) -> Result<Self, FenError> {
-        let mut splitted = fen.split(" ").collect::<Vec<&str>>();
-        let mut fullmoves_b = 0;
-
-        if let Some(&fullmove) = splitted.get(6){
-            if let Ok(num) = fullmove.parse::<u16>() {
-                fullmoves_b = num;
-            }
-        }
-        let board = Board::default();
-
-        Ok(
-            Game { board, fullmove_counter: fullmoves_b, positions: HashList::new(), move_lists: MoveList::new() }
-        )
-    }
-}
-
-
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(align(64))]
 
 pub struct Board {
@@ -270,6 +234,11 @@ impl Board {
     }
 
     #[inline(always)]
+    pub fn get_turn(&self) -> Color {
+        self.turn
+    }
+
+    #[inline(always)]
     pub fn get_halfmoves(&self) -> u16 {
         self.halfmoves
     }
@@ -455,6 +424,126 @@ impl Board {
         return self.get_piece(square) as usize;
     }
 
+
+    pub fn count_material(&self) -> f32 {
+        let mut result = 0.0f32;
+        result += (self.piece_bb[Pawn.index()].count_ones() as f32) * 1.0;
+        result += (self.piece_bb[Bishop.index()].count_ones() as f32) * 3.0;
+        result += (self.piece_bb[Knight.index()].count_ones() as f32) * 3.0;
+        result += (self.piece_bb[Rook.index()].count_ones() as f32) * 5.0;
+        result += (self.piece_bb[Queen.index()].count_ones() as f32) * 9.0;
+
+        result -= (self.piece_bb[Pawn.index() + Black.offset()].count_ones() as f32) * 1.0;
+        result -= (self.piece_bb[Bishop.index() + Black.offset()].count_ones() as f32) * 3.0;
+        result -= (self.piece_bb[Knight.index() + Black.offset()].count_ones() as f32) * 3.0;
+        result -= (self.piece_bb[Rook.index() + Black.offset()].count_ones() as f32) * 5.0;
+        result -= (self.piece_bb[Queen.index() + Black.offset()].count_ones() as f32) * 9.0;
+
+        match self.turn {
+            White => result,
+            _ => -result
+        }
+    }
+
+    #[inline(always)]
+    pub fn result(&self) -> f32 {
+        match self.turn {
+            White => {
+                if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
+                    return 1000.0;
+                }
+                0.0
+            },
+            Black => {
+                if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
+                    return 1000.0;
+                }
+                0.0
+            },
+            _ => {panic!()}
+        }
+    }
+
+
+    pub fn qualify_move(&self, m: &str) -> Result<Move, Box<dyn Error>> {
+        match self.turn {
+            White => self.move_matching::<WhiteSide>(m),
+            Black => self.move_matching::<BlackSide>(m),
+            _ => panic!()
+        }
+    }
+
+    #[inline(always)]
+    fn move_matching<S: Side>(&self, m: &str) -> Result<Move, Box<dyn Error>> {
+        let first = &m[0..2];
+        let second = &m[2..4];
+        let from_square = Square::from_string(first)?;
+        let to_square = Square::from_string(second)?;
+        let from_piece = self.get_piece(from_square);
+        let to_piece = self.get_piece(to_square);
+        let to_board = to_square.to_bitboard();
+
+        let mut flags = Move::QUIET;
+
+        match from_piece {
+            King => {
+                if from_square == Square::E1 || from_square == Square::E8 {
+                    if to_square == Square::G1 || to_square == Square::G8 {
+                            flags = Move::KING_CASTLE;
+                        }
+                        else if to_square == Square::C1 || to_square == Square::C8 {
+                            flags = Move::QUEEN_CASTLE;
+                        }
+                }
+            },
+            Pawn => {
+                match to_piece {
+                    Empty => {
+                        if to_board == self.en_passant {
+                            flags = Move::EN_PASSANT;
+                        }
+                        else if S::shift_up(from_square.to_bitboard()) & to_board != EMPTY_BB {
+                            if to_board == S::LAST_RANK {
+                                flags = match &m[5..5] {
+                                    "q" => Move::PROMO_QUEEN,
+                                    "n" => Move::PROMO_KNIGHT,
+                                    "r" => Move::PROMO_ROOK,
+                                    "b" => Move::PROMO_BISHOP,
+                                    _ => panic!()
+                                };
+                            }
+                        }
+                        else { 
+                            flags = Move::DOUBLE_PAWN;
+                        }
+                    },
+                    _ => {
+                        if to_board & S::LAST_RANK != EMPTY_BB {
+                            flags = match &m[5..5] {
+                                "q" => Move::PROMO_CAP_QUEEN,
+                                "n" => Move::PROMO_CAP_KNIGHT,
+                                "r" => Move::PROMO_CAP_ROOK,
+                                "b" => Move::PROMO_CAP_BISHOP,
+                                _ => panic!()
+                            };
+                        }
+                        else {
+                            flags = Move::CAPTURE;
+                        }
+                    }
+                }
+            },
+            _ => {
+                if to_piece != Empty {
+                    flags = Move::CAPTURE
+                }
+            }
+            
+        }
+        Ok(Move::new(from_square, to_square, flags))
+    }
+
+
     pub fn get_color(&self, square: Square) -> Color {
         if self.piece_bb[0] & (square.to_bitboard()) != EMPTY_BB {
             return White;
@@ -462,6 +551,7 @@ impl Board {
             return Black;
         }
     }
+
 
 
     pub fn print(&self) -> () {
@@ -494,4 +584,83 @@ impl Board {
         }
     }
 
+}
+
+
+
+#[cfg(test)]
+mod test {
+    use crate::chess::Board;
+    use crate::chess::square::Square;
+    use crate::chess::chessMove::Move;
+
+    #[test] 
+    fn default_should_be_equal_0() {
+        assert_eq!(
+            Board::default().count_material(),
+            0.0,
+            "Default evaluation is non Zero"
+        );
+    }
+
+    #[test]
+    fn black_loses_pawn() {
+
+        let m1 = Move::new(Square::E2, Square::E4, 1);
+        let m2 = Move::new(Square::B7, Square::B5,1);
+        let m3 = Move::new(Square::F1, Square::B5, 4);
+        let m4 = Move::new(Square::A7, Square::A6, 0);
+
+        let mut board = Board::default();
+        
+        board.make_pl_move(m1);
+        board.make_pl_move(m2);
+        board.make_pl_move(m3);
+
+        assert_eq!(
+            board.count_material(),
+            -1.0,
+            "Black lost a pawn and should evaluate to -1.0"
+        );
+
+        board.make_pl_move(m4);
+        assert_eq!(
+            board.count_material(),
+            1.0,
+            "White won a pawn and should evalute to 1.0"
+        );
+    }
+
+
+
+    #[test]
+    fn white_loses_queen() {
+
+        let m1 = Move::new(Square::E2, Square::E4, Move::DOUBLE_PAWN);
+        let m2 = Move::new(Square::G8, Square::F6,Move::QUIET);
+        let m3 = Move::new(Square::D1, Square::G4, Move::QUIET);
+        let m4 = Move::new(Square::F6, Square::G4, Move::CAPTURE);
+        let m5 = Move::new(Square::A2, Square::A3, Move::QUIET);
+
+        let mut board = Board::default();
+
+        board.make_pl_move(m1);
+        board.make_pl_move(m2);
+        board.make_pl_move(m3);
+        board.make_pl_move(m4);
+
+
+        assert_eq!(
+            board.count_material(),
+            -9.0,
+            "White lost its queen should be -9.0"
+        );
+
+        board.make_pl_move(m5);
+        assert_eq!(
+            board.count_material(),
+            9.0,
+            "Black won whites queen should be -9.0"
+        );
+    }
 }

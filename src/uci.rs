@@ -1,23 +1,49 @@
-use chess::{Board, ChessMove, Game};
+
+use crate::chess::game::Game;
+use crate::chess::chessMove::Move;
+use crate::search::SearchAlgorithm;
+use crate::evaluation::BoardEvaluator;
+use crate::move_sorting::MoveSortingAlgorithm;
+
+
 use std::{
     error::Error,
     io::{Read, Stdin, Stdout, Write, stdin, stdout},
     str::FromStr,
 };
 
-use crate::{search::SearchAlgorithm, utils::display_board};
 
-pub struct UCIManager {
+
+pub struct UCIManager<Search, Eval, Sort>
+where 
+Search: SearchAlgorithm,
+Eval: BoardEvaluator,
+Sort: MoveSortingAlgorithm,
+{   
+    search: Search,
+    eval: Eval,
+    sort: Sort,
     game: Game,
-    search_algorithm: Box<dyn SearchAlgorithm>,
     std_in: Stdin,
 }
 
-impl UCIManager {
-    pub fn new(search_algorithm: Box<dyn SearchAlgorithm>) -> UCIManager {
+impl<Search, Eval, Sort> UCIManager<Search, Eval, Sort>
+where 
+Search: SearchAlgorithm,
+Eval: BoardEvaluator,
+Sort: MoveSortingAlgorithm,
+{
+    pub fn new(search: Search, eval: Eval, sort: Sort) -> UCIManager<Search, Eval, Sort>
+    where 
+    Search: SearchAlgorithm,
+    Eval: BoardEvaluator,
+    Sort: MoveSortingAlgorithm, 
+    {
         UCIManager {
-            game: Game::new(),
-            search_algorithm: search_algorithm,
+            search: search,
+            eval: eval,
+            sort: sort,
+            game: Game::default(),
             std_in: stdin(),
         }
     }
@@ -47,7 +73,7 @@ impl UCIManager {
                     }
 
                     "ucinewgame" => {
-                        self.game = Game::new();
+                        self.game = Game::default();
                     }
 
                     "isready" => {
@@ -60,17 +86,16 @@ impl UCIManager {
                             Some("fen") => {
                                 let fen_parts: Vec<&str> = tokens.by_ref().take(6).collect();
                                 let fen = fen_parts.join(" ");
-
-                                if let Ok(value) = Game::from_str(&fen) {
+                                if let Ok(value) = Game::from_fen(&fen) {
                                     self.game = value;
                                 }
                                 let move_token = tokens.next();
                                 match move_token {
                                     Some("moves") => {
                                         while let Some(token) = tokens.next() {
-                                            if let Ok(m) = ChessMove::from_str(token) {
-                                                self.game.make_move(m);
-                                            }
+                                    
+                                            self.game.make_pl_move(Move::from_string(token, &self.game)?);
+                                            
                                         }
                                     }
                                     _ => {}
@@ -78,7 +103,7 @@ impl UCIManager {
                             }
 
                             Some("startpos") => {
-                                self.game = Game::new();
+                                self.game = Game::default();
                             }
                             _ => {}
                         };
@@ -91,21 +116,16 @@ impl UCIManager {
                             Some("depth") => {
                                 let next_token = tokens.next();
                                 let maybe_int =
-                                    next_token.as_deref().and_then(|i| i.parse::<i16>().ok());
-                                search_depth = match maybe_int {
-                                    Some(n) => n,
-                                    None => 6,
-                                };
-                                println!("{}", search_depth);
+                                    search_depth = next_token.as_deref().and_then(|i| i.parse::<u8>().ok()).unwrap();
                             },
                             _ => {},
                         };
 
-                        if let Some(m) = self
-                            .search_algorithm
-                            .search(&self.game.current_position(), search_depth)
+                        if let Some(res) = self
+                            .search
+                            .search::<Eval,Sort>(&mut self.game, search_depth)
                         {
-                            println!("bestmove {}", m.0.to_string());
+                            println!("bestmove {}", res.best_move.to_string());
                         }
                     }
                     _ => {}

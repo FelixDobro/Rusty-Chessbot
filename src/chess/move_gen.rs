@@ -46,7 +46,7 @@ impl Board {
                 if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F1)) 
                 && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G1))
                 {
-                    move_list.push(Move::new(Square::E1.u16(), Square::G1.u16(), Move::KING_CASTLE));
+                    move_list.push(Move::new(Square::E1, Square::G1, Move::KING_CASTLE));
                 }
                 }
             }
@@ -55,7 +55,7 @@ impl Board {
             if self.occupied & WHITE_QUEEN_CASTLE_BLOCKERS == EMPTY_BB {
                 if !(self.sq_attacked_by::<S::OPPOSITE>(Square::C1))
                 && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D1)) {
-                    move_list.push(Move::new(Square::E1.u16(), Square::C1.u16(), Move::QUEEN_CASTLE));
+                    move_list.push(Move::new(Square::E1, Square::C1, Move::QUEEN_CASTLE));
                 }
                 }
             }
@@ -67,7 +67,7 @@ impl Board {
             if self.occupied & BLACK_KING_CASTLE_BLOCKERS == EMPTY_BB {
                 if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F8)) 
                 && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G8)) {
-                    move_list.push(Move::new(Square::E8.u16(), Square::G8.u16(), Move::KING_CASTLE));
+                    move_list.push(Move::new(Square::E8, Square::G8, Move::KING_CASTLE));
                     }
                 }
         }
@@ -78,7 +78,7 @@ impl Board {
             if self.occupied & BLACK_QUEEN_CASTLE_BLOCKERS == EMPTY_BB{
                 if !(self.sq_attacked_by::<S::OPPOSITE>(Square::C8))
                 && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D8)) {
-                    move_list.push(Move::new(Square::E8.u16(), Square::C8.u16(), Move::QUEEN_CASTLE));
+                    move_list.push(Move::new(Square::E8, Square::C8, Move::QUEEN_CASTLE));
                 }
                 }
             }
@@ -91,21 +91,21 @@ impl Board {
         let mut king_board = self.piece_bb[S::OFFSET + King.index()];
 
         while king_board != EMPTY_BB {
-            let from_sqaure = king_board.lsb().u16();
+            let from_sqaure = king_board.lsb();
 
-            let pattern_board = KING_PATTERNS[from_sqaure as usize];
+            let pattern_board = KING_PATTERNS[from_sqaure.usize()];
             let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
             let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
 
             while captures != EMPTY_BB {
-                let to_square = captures.lsb().u16();
+                let to_square = captures.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
                 captures.pop_lsb();
             }
 
             while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb().u16();
+                let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
             }
@@ -119,14 +119,14 @@ impl Board {
         let mut queen_board = self.piece_bb[S::OFFSET + Queen.index()];
 
         while queen_board != EMPTY_BB {
-            let from_sqaure = queen_board.lsb().u16();
+            let from_sqaure = queen_board.lsb();
 
-            let mask = STRAIGHT_LINES[from_sqaure as usize];
+            let mask = STRAIGHT_LINES[from_sqaure.usize()];
             let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            let mut pattern_board = STRAIGHT_LINES_MAGIC[from_sqaure as usize][index as usize];
-            let mask = DIAGONAL_LINES[from_sqaure as usize];
+            let mut pattern_board = STRAIGHT_LINES_MAGIC[from_sqaure.usize()][index as usize];
+            let mask = DIAGONAL_LINES[from_sqaure.usize()];
             let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64())};
-            let diag_patterns = DIAG_LINES_MAGIC[from_sqaure as usize][index as usize];
+            let diag_patterns = DIAG_LINES_MAGIC[from_sqaure.usize()][index as usize];
 
             pattern_board |= diag_patterns;
 
@@ -136,13 +136,13 @@ impl Board {
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
 
             while captures != EMPTY_BB {
-                let to_square = captures.lsb().u16();
+                let to_square = captures.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
                 captures.pop_lsb();
             }
 
             while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb().u16();
+                let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
             }
@@ -155,24 +155,24 @@ impl Board {
         let mut rook_board = self.piece_bb[S::OFFSET + Rook.index()];
 
         while rook_board != EMPTY_BB {
-            let from_sqaure = rook_board.lsb().u16();
+            let from_sqaure = rook_board.lsb();
 
-            let mask = STRAIGHT_LINES[from_sqaure as usize];
+            let mask = STRAIGHT_LINES[from_sqaure.usize()];
             let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            let pattern_board = STRAIGHT_LINES_MAGIC[from_sqaure as usize][index as usize];
+            let pattern_board = STRAIGHT_LINES_MAGIC[from_sqaure.usize()][index as usize];
 
             let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
             let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
 
             while captures != EMPTY_BB {
-                let to_square = captures.lsb().u16();
+                let to_square = captures.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
                 captures.pop_lsb();
             }
 
             while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb().u16();
+                let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
             }
@@ -186,24 +186,24 @@ impl Board {
         let mut bishop_board = self.piece_bb[S::OFFSET + Bishop.index()];
 
         while bishop_board != EMPTY_BB {
-            let from_sqaure = bishop_board.lsb().u16();
+            let from_sqaure = bishop_board.lsb();
 
-            let mask = DIAGONAL_LINES[from_sqaure as usize];
+            let mask = DIAGONAL_LINES[from_sqaure.usize()];
             let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            let pattern_board = DIAG_LINES_MAGIC[from_sqaure as usize][index as usize];
+            let pattern_board = DIAG_LINES_MAGIC[from_sqaure.usize()][index as usize];
 
             let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
             let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
 
             while captures != EMPTY_BB {
-                let to_square = captures.lsb().u16();
+                let to_square = captures.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
                 captures.pop_lsb();
             }
 
             while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb().u16();
+                let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
             }
@@ -216,21 +216,22 @@ impl Board {
         let mut knight_board = self.piece_bb[S::OFFSET + Knight.index()];
 
         while knight_board != EMPTY_BB {
-            let from_sqaure = knight_board.lsb().u16();
+            let from_sqaure = knight_board.lsb();
 
-            let pattern_board = KNIGHT_PATTERNS[from_sqaure as usize];
+            let pattern_board = KNIGHT_PATTERNS[from_sqaure.usize()];
             let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
             let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
 
             while captures != EMPTY_BB {
-                let to_square = captures.lsb().u16();
+                let to_square = captures.lsb();
+    
                 move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
                 captures.pop_lsb();
             }
 
             while normal_moves != EMPTY_BB{
-                let to_square = normal_moves.lsb().u16();
+                let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
             }
@@ -266,35 +267,38 @@ impl Board {
 
         while single_pushes != EMPTY_BB {
             let to_square = single_pushes.lsb().i8();
-            move_list.push(Move::new((to_square - S::UP) as u16, to_square as u16, 0));
+            move_list.push(Move::new(
+                Square::from_u16((to_square - S::UP) as u16),
+                Square::from_u16(to_square as u16),
+                Move::QUIET));
             single_pushes.pop_lsb();
         }
 
         while double_pushes != EMPTY_BB {
             let to_square = double_pushes.lsb().i8();
             move_list.push(Move::new(
-                (to_square - S::UP - S::UP) as u16,
-                to_square as u16,
-                1,
+                Square::from_u16((to_square - S::UP - S::UP) as u16),
+                Square::from_u16(to_square as u16),
+                Move::DOUBLE_PAWN,
             ));
             double_pushes.pop_lsb();
         }
 
         while promotions != EMPTY_BB {
-            let to_square = promotions.lsb().i8();
-            let from_square = (to_square - S::UP) as u16;
-            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_KNIGHT));
-            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_QUEEN));
-            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_ROOK));
-            move_list.push(Move::new(from_square, to_square as u16, Move::PROMO_BISHOP));
+            let to_square = Square::from_u16(promotions.lsb().u16());
+            let from_square = Square::from_u16((to_square.i8() - S::UP) as u16);
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_KNIGHT));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_QUEEN));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_ROOK));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_BISHOP));
             promotions.pop_lsb();
         }
 
         while left_attacks != EMPTY_BB {
             let to_square = left_attacks.lsb().i8();
             move_list.push(Move::new(
-                (to_square + S::DOWN_RIGHT) as u16,
-                to_square as u16,
+                Square::from_u16((to_square + S::DOWN_RIGHT) as u16),
+                Square::from_u16(to_square as u16),
                 Move::CAPTURE,
             ));
             left_attacks.pop_lsb();
@@ -303,8 +307,8 @@ impl Board {
         while right_attacks != EMPTY_BB {
             let to_square = right_attacks.lsb().i8();
             move_list.push(Move::new(
-                (to_square + S::DOWN_LEFT) as u16,
-                to_square as u16,
+                Square::from_u16((to_square + S::DOWN_LEFT) as u16),
+                Square::from_u16(to_square as u16),
                 Move::CAPTURE,
             ));
             right_attacks.pop_lsb();
@@ -313,8 +317,8 @@ impl Board {
         while left_en_passants != EMPTY_BB {
             let to_square = left_en_passants.lsb().i8();
             move_list.push(Move::new(
-                (to_square + S::DOWN_RIGHT) as u16,
-                to_square as u16,
+                Square::from_u16((to_square + S::DOWN_RIGHT) as u16),
+                Square::from_u16(to_square as u16),
                 Move::EN_PASSANT,
             ));
             left_en_passants.pop_lsb();
@@ -324,60 +328,62 @@ impl Board {
 
             let to_square = right_en_passants.lsb().i8();
             move_list.push(Move::new(
-                (to_square + S::DOWN_LEFT) as u16,
-                to_square as u16,
+                Square::from_u16((to_square + S::DOWN_LEFT) as u16),
+                Square::from_u16(to_square as u16),
                 Move::EN_PASSANT,
             ));
             right_en_passants.pop_lsb();
         }
 
         while left_promotions_cap != EMPTY_BB {
-            let to_square = left_promotions_cap.lsb().i8();
-            let from_square = (to_square + S::DOWN_RIGHT) as u16;
+            let to_square_raw = left_promotions_cap.lsb().i8();
+            let from_square = Square::from_u16((to_square_raw + S::DOWN_RIGHT) as u16);
+            let to_square = Square::from_u16(to_square_raw as u16);
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_KNIGHT,
             ));
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_BISHOP,
             ));
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_QUEEN,
             ));
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_ROOK,
             ));
             left_promotions_cap.pop_lsb();
         }
 
         while right_promotions_cap != EMPTY_BB {
-            let to_square = right_promotions_cap.lsb().i8();
-            let from_square = (to_square + S::DOWN_LEFT) as u16;
+            let to_square_raw = right_promotions_cap.lsb().i8();
+            let from_square = Square::from_u16((to_square_raw + S::DOWN_LEFT) as u16);
+            let to_square = Square::from_u16(to_square_raw as u16);
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_KNIGHT,
             ));
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_BISHOP,
             ));
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_QUEEN,
             ));
             move_list.push(Move::new(
                 from_square,
-                to_square as u16,
+                to_square,
                 Move::PROMO_CAP_ROOK,
             ));
             right_promotions_cap.pop_lsb();
@@ -423,7 +429,7 @@ impl Board {
         self.update_hash_piece::<S>(promo, to);
         self.update_hash_piece::<S>(p, from);
 
-        self.halfmoves += 1;
+        self.halfmoves = 0;
         self.turn = self.turn.opposite();
         self.update_move_hash();
 
@@ -466,7 +472,11 @@ impl Board {
         self.update_hash_piece::<S>(p, from);
         self.update_hash_piece::<S>(p, to);
 
-        self.halfmoves += 1;
+        self.halfmoves = match p {
+            Pawn => 0,
+            _ => {self.halfmoves + 1}
+        };
+
         self.turn = self.turn.opposite();
         self.update_move_hash();
 
@@ -515,7 +525,7 @@ impl Board {
         self.update_en_passant_hash();
         self.en_passant = EMPTY_BB;
 
-        self.halfmoves += 1;
+        self.halfmoves = 0;
         self.turn = self.turn.opposite();
         self.update_move_hash();
 
@@ -567,7 +577,7 @@ impl Board {
         self.update_hash_piece::<S>(p_capturing, to);
         self.update_hash_piece::<S::OPPOSITE>(p_captured, to);
 
-        self.halfmoves += 1;
+        self.halfmoves = 0;
         self.turn = self.turn.opposite();
         self.update_move_hash();
 
@@ -624,7 +634,7 @@ impl Board {
         self.update_hash_piece::<S>(promo, to);
         self.update_hash_piece::<S::OPPOSITE>(p_captured, to);
 
-        self.halfmoves += 1;
+        self.halfmoves = 0;
         self.turn = self.turn.opposite();
         self.update_move_hash();
 

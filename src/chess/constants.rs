@@ -123,7 +123,7 @@ pub const CASTLING_TABLE: [[CastlingMechanics; 2]; 2] =
 ];
 
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Piece {
     Pawn = 0,
@@ -149,7 +149,7 @@ impl Piece {
 
 
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Color {
     White = 0,

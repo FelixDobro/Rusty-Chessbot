@@ -1,15 +1,23 @@
 
 mod chess;
+mod search;
+mod evaluation;
+mod move_sorting;
+mod uci;
 
 use std::error::Error;
 use std::sync::LazyLock;
 use crate::chess::Board;
-use crate::chess::bitboard::EMPTY;
+use crate::chess::game::Game;
 use crate::chess::chessMove::{*};
 use crate::chess::square::Square;
 use crate::chess::constants::{*};
 use crate::chess::hash::{*};
-
+use crate::move_sorting::{NoSorting, NumericSorting};
+use crate::search::SearchAlgorithm;
+use crate::uci::UCIManager;
+use search::simple_search::NegaMaxCopy;
+use evaluation::static_evaluation::MaterialEvaluator;
 use rayon::prelude::*;
 
 
@@ -63,46 +71,31 @@ fn private_perft_copy(board: &Board, depth: u8) -> usize {
 
 
 fn main() -> Result<(), Box<dyn Error>> {
-    
-   
+
+    let mut mangager = UCIManager::new(
+        NegaMaxCopy,
+        MaterialEvaluator, 
+        NoSorting
+    );
+
+    mangager.start_protocol();
 
 
-    let m1 = Move::new(Square::C4.u16(), Square::C5.u16(), 0);
-    let m2 = Move::new(Square::E8.u16(), Square::C8.u16(), 3);
-    let m3 = Move::new(Square::H6.u16(), Square::F7.u16(), 4);
-    let m4 = Move::new(Square::E8.u16(), Square::G8.u16(), 2);
-    let m5 = Move::new(Square::H2.u16(), Square::G1.u16(), 15);
-    let m6 = Move::new(Square::D5.u16(), Square::C5.u16(), 0);
-    let m7 = Move::new(Square::G2.u16(), Square::G4.u16(), 1);
-    let m8 = Move::new(Square::B4.u16(), Square::A3.u16(), 4);
-    let m9 = Move::new(Square::A1.u16(), Square::A3.u16(), 4);
+    // let m1 = Move::new(Square::E2, Square::E4, 1);
+    // let m2 = Move::new(Square::B7, Square::B5,1);
+    // let m3 = Move::new(Square::F1, Square::B5, 4);
+    // let m4 = Move::new(Square::A7, Square::A6, 0);
+    // let m5 = Move::new(Square::H2, Square::G1, 15);
+    // let m6 = Move::new(Square::D5, Square::C5, 0);
+    // let m7 = Move::new(Square::G2, Square::G4, 1);
+    // let m8 = Move::new(Square::B4, Square::A3, 4);
+    // let m9 = Move::new(Square::A1, Square::A3, 4);
 
-    let mut board = Board::from_fen("2r1k2r/8/8/8/8/8/8/R3K2R w KQk").unwrap();
+    // let repetitive_w_1 = Move::new(Square::E1, Square::E2, 0);
+    // let repetitive_w_2 = Move::new(Square::E2, Square::E1, 0);
+    // let repetitive_b_1 = Move::new(Square::E8, Square::E7, 0);
+    // let repetitive_b_2 = Move::new(Square::E7, Square::E8, 0);
 
-    // board.print();
-    // perft_copy(&board, 5);
-
-    // board.make_pl_move(m1);
-    // board.print();
-
-   
-    // board.make_pl_move(m2);
-    // board.print();
-     
-
-    // board.make_pl_move(m3);
-    // board.print();
-    // perft_copy(&board, 1);
-
-
-    // board.make_pl_move(m4);
-    // board.print();
-
-    // board.make_pl_move(m5);
-    // board.print();
-
-    // board.make_pl_move(m6);
-    // board.print();
 
 
     Ok(())
