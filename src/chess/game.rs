@@ -1,4 +1,4 @@
-use core::num;
+
 
 use crate::chess::chessMove::Move;
 
@@ -45,11 +45,26 @@ impl Game {
 
     pub fn make_pl_move_copy(&mut self, m: Move) -> Option<Board> {
         if let Some(mut new_board) = self.board.make_pl_move_copy(m) {
+            self.board = new_board;
             self.push_state(&mut new_board);
             return Some(new_board);
         }
         None
     }
+
+    fn unmake_quiet<S: Side>(&mut self, m: Move) {}
+
+    pub fn unmake_pl_move<S: Side>(&mut self, m: Move) {
+        debug_assert!(self.board.get_halfmoves() != 0);
+        match m.flags() {
+            Move::QUIET => {
+                self.quiet::<S>(m);
+            },
+            Move::CAPTURE => {},
+            _ => {}
+        }
+    }
+
 
     #[inline(always)]
     pub fn get_board(&self) -> &Board {
@@ -96,6 +111,8 @@ impl Game {
         false
     }
 
+
+
     #[inline(always)]
     pub fn push_state(&mut self, new_board: &Board) {
         self.positions.push(new_board.get_hash());
@@ -135,19 +152,20 @@ mod test {
         let mut game = Game::default();
         let initial_game = game.clone();
         let initial_board = game.board.clone();
-        let &m = game.generate_pseudolegals().as_slice().first().unwrap();
+        
         
         let mut board_vec: Vec<Board> = vec![];
 
         for _ in 0..10 {
+            let &m = game.generate_pseudolegals().as_slice().first().unwrap();
             let new_board = game.make_pl_move_copy(m).unwrap();
             board_vec.push(new_board);
-            game.push_state(&new_board);
         }
         board_vec.iter().rev().for_each(|board| {game.pop_only_state(board);});
         game.board = initial_board;
       
         assert_eq!(initial_game.fullmove_counter, game.fullmove_counter);
+        
         assert_eq!(game.positions.half_move_iter(initial_board.get_halfmoves() as u64), initial_game.positions.half_move_iter(initial_board.get_halfmoves() as u64));
     }
 }

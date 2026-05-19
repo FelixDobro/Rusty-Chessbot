@@ -11,10 +11,13 @@ pub struct NegaMaxCopy;
 
 
 impl NegaMaxCopy {
+    const INFINITY: i32 = 2_000_000;
+    const NEG_INFINITY: i32 = -2_000_000;
+
 
     pub fn negamax_copy<Eval: BoardEvaluator, Sort: MoveSortingAlgorithm>(game: &mut Game, depth: u8) -> Option<SearchResult> {
-    let mut best_val = f32::MIN;
-    let mut alpha = f32::MIN;
+    let mut best_val = Self::NEG_INFINITY;
+    let mut alpha = Self::NEG_INFINITY;
     let mut best_move= None ;
 
     let mut board = game.get_board().clone();
@@ -22,7 +25,7 @@ impl NegaMaxCopy {
     for &m in Sort::move_iter(&mut board.generate_pseudolegals()) {
         if let Some(mut new_board) = board.make_pl_move_copy(m) {
             game.push_state(&new_board);
-            let value = - Self::negamax_copy_p::<Eval, Sort>(game, &mut new_board, depth - 1, f32::MIN, -alpha);
+            let value = - Self::negamax_copy_p::<Eval, Sort>(game, &mut new_board, depth - 1, Self::NEG_INFINITY, -alpha);
             game.pop_only_state(&new_board);
             if value > best_val {
                 best_move = Some(m);
@@ -46,14 +49,14 @@ impl NegaMaxCopy {
         game: &mut Game,
         board: &mut Board, 
         depth: u8,
-        mut alpha: f32,
-        beta: f32,
-    ) -> f32 {
+        mut alpha: i32,
+        beta: i32,
+    ) -> i32 {
         if depth == 0 {
             return Eval::evaluate(board);
         }  
         if game.can_claim_draw() {
-            return 0.0
+            return 0
         }
 
         let mut num_moves_found = 0;

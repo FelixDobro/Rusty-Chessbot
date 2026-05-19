@@ -437,7 +437,7 @@ impl Board {
     }
 
     #[inline(always)]
-    fn move_piece<S: Side>(&mut self, m: Move) -> bool {
+    fn quiet<S: Side>(&mut self, m: Move) -> bool {
         let from = m.from();
         let to = m.to();
         let from_board = from.to_bitboard();
@@ -702,10 +702,10 @@ impl Board {
         return None
     }
 
-    fn unmake_pseudolegal_move<S: Side>(&mut self, m: Move) {
+    fn unmake_pl_move<S: Side>(&mut self, m: Move) {
         match m.flags() {
             Move::QUIET => {
-                self.move_piece::<S>(m);
+                self.quiet::<S>(m);
             },
             Move::CAPTURE => {},
             _ => {}
@@ -717,13 +717,13 @@ impl Board {
 
         match m.flags() {
             Move::QUIET => {
-                success = self.move_piece::<S>(m);
+                success = self.quiet::<S>(m);
             }
             Move::CAPTURE => {
                 success = self.capture::<S>(m);
             }
             Move::DOUBLE_PAWN => {
-                success = self.move_piece::<S>(m);
+                success = self.quiet::<S>(m);
                 if success {
                     self.en_passant = EN_PESSANT_UPDATES[m.from().usize()];
                     self.update_en_passant_hash();

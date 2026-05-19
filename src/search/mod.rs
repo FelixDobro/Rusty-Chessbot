@@ -7,7 +7,7 @@ use crate::{chess::chessMove::Move, evaluation::BoardEvaluator};
 #[derive(Debug, PartialEq)]
 pub struct SearchResult {
     pub best_move: Move,
-    pub evaluation: f32,
+    pub evaluation: i32,
 }
 
 pub trait SearchAlgorithm {

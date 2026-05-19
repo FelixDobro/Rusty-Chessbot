@@ -1,32 +1,26 @@
-pub mod move_gen;
-pub mod hash;
-pub mod square;
-pub mod chessMove;
 pub mod bitboard;
+pub mod chessMove;
 pub mod constants;
 pub mod game;
+pub mod hash;
+pub mod move_gen;
+pub mod square;
 
-
+use crate::chess::bitboard::EMPTY as EMPTY_BB;
+use crate::chess::bitboard::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
 use std::error::Error;
 use std::{default, str};
-use crate::chess::bitboard::{*};
-use crate::chess::bitboard::EMPTY as EMPTY_BB;
 
 use crate::chess::chessMove::{GAME_MOVES_SIZE, Move, MoveList};
 use crate::chess::hash::HashList;
 use crate::chess::square::Square;
 
-use crate::chess::constants::{*};
 use crate::chess::constants::Color::{Black, White};
-use crate::chess::constants::{Side, BlackSide, WhiteSide, Piece, CastlingRights, Color};
-use crate::chess::constants::Piece::{*};
-
-
-
-
-
+use crate::chess::constants::Piece::*;
+use crate::chess::constants::*;
+use crate::chess::constants::{BlackSide, CastlingRights, Color, Piece, Side, WhiteSide};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(align(64))]
@@ -42,9 +36,8 @@ pub struct Board {
     pub en_passant: Bitboard,
     pub castling_rights: u8,
     halfmoves: u16,
-    hash: u64
+    hash: u64,
 }
-
 
 #[derive(Debug)]
 pub enum FenError {
@@ -59,7 +52,6 @@ pub enum FenError {
 }
 
 impl Board {
-
     pub fn default() -> Self {
         let mut board = Board {
             piece_bb: [
@@ -94,12 +86,11 @@ impl Board {
             en_passant: EMPTY_BB,
             castling_rights: 0xF,
             halfmoves: 0,
-            hash: 0
+            hash: 0,
         };
         board.hash = board.calculate_hash();
         board
     }
-
 
     pub fn from_fen(fen_string: &str) -> Result<Board, FenError> {
         let mut piece_bb = [EMPTY_BB; 12];
@@ -110,24 +101,24 @@ impl Board {
         let mut en_passant_right = EMPTY_BB;
         let mut castling_rights = 0;
         let mut halfmoves_b: u16 = 0;
-        let mut fullmoves_b = 0; 
+        let mut fullmoves_b = 0;
 
-
-        let mut splitted= fen_string.split(" ");
+        let mut splitted = fen_string.split(" ");
 
         if let Some(ranks) = splitted.next() {
             let mut num_ranks = 0;
 
-            if num_ranks > 7 {return Err(FenError::InvalidNumRanks)}
-        
+            if num_ranks > 7 {
+                return Err(FenError::InvalidNumRanks);
+            }
+
             for rank in ranks.split("/") {
                 let mut square_offset: u8 = (7 - num_ranks) * 8;
-                for c in rank.chars(){ 
+                for c in rank.chars() {
                     if let Some(number) = c.to_digit(10) {
-                        square_offset += number as u8; 
-                    }
-                    else {
-                        let color = if c.is_uppercase() {White} else {Black};
+                        square_offset += number as u8;
+                    } else {
+                        let color = if c.is_uppercase() { White } else { Black };
 
                         let piece = match c.to_ascii_lowercase() {
                             'p' => Pawn,
@@ -136,42 +127,38 @@ impl Board {
                             'r' => Rook,
                             'q' => Queen,
                             'k' => King,
-                            _ => return Err(FenError::InvalidPiece)
+                            _ => return Err(FenError::InvalidPiece),
                         };
 
                         let appears_board = Square::from_u8(square_offset).to_bitboard();
-    
+
                         piece_8_board[square_offset as usize] = piece;
                         piece_bb[piece.index() + color.offset()] ^= appears_board;
-                        color_bb[color.index()] ^= appears_board; 
+                        color_bb[color.index()] ^= appears_board;
                         occupied ^= appears_board;
                         square_offset += 1;
-
                     }
                 }
                 num_ranks += 1;
-            } 
-            if  num_ranks != 8 {
+            }
+            if num_ranks != 8 {
                 return Err(FenError::InvalidNumRanks);
             }
-        } 
-        else {
-            return Err(FenError::InvalidNumSections)
+        } else {
+            return Err(FenError::InvalidNumSections);
         }
 
         if let Some(side_to_move) = splitted.next() {
             turn = match side_to_move {
                 "w" => White,
                 "b" => Black,
-                _ => return Err(FenError::InvalidTurn)
+                _ => return Err(FenError::InvalidTurn),
             };
-        }
-        else {
-            return Err(FenError::InvalidNumSections)
+        } else {
+            return Err(FenError::InvalidNumSections);
         }
 
         if let Some(rights) = splitted.next() {
-            
             for right in rights.chars() {
                 castling_rights += match right {
                     'K' => CastlingRights::KingCastleWhite as u8,
@@ -179,52 +166,54 @@ impl Board {
                     'k' => CastlingRights::KingCastleBlack as u8,
                     'q' => CastlingRights::QueenCastleBlack as u8,
                     '-' => 0,
-                    _ => return Err(FenError::Castling)
+                    _ => return Err(FenError::Castling),
                 }
             }
-        } 
-        else {
+        } else {
             return Err(FenError::InvalidNumSections);
         }
 
-        
         if let Some(en_passant) = splitted.next() {
             en_passant_right = match en_passant {
                 "-" => EMPTY_BB,
                 _ => {
                     if let Ok(square) = Square::from_string(en_passant) {
                         square.to_bitboard()
-                    }
-                    else {
-                        return Err(FenError::EnPassant)
+                    } else {
+                        return Err(FenError::EnPassant);
                     }
                 }
             };
         }
-     
 
         if let Some(halfmoves) = splitted.next() {
             if let Ok(num) = halfmoves.parse::<u16>() {
                 halfmoves_b = num
-            }
-            else {
+            } else {
                 return Err(FenError::HalfMove);
             }
         }
-    
-    
+
         if let Some(fullmove) = splitted.next() {
             if let Ok(num) = fullmove.parse::<u16>() {
                 fullmoves_b = num;
-            }
-            else {
+            } else {
                 return Err(FenError::FullMove);
             }
         }
 
-
-        let mut board = Board { piece_bb, color_bb, occupied, piece: piece_8_board, turn, en_passant: en_passant_right, castling_rights, halfmoves: halfmoves_b, hash: 0};
-        board.hash = board.calculate_hash();  
+        let mut board = Board {
+            piece_bb,
+            color_bb,
+            occupied,
+            piece: piece_8_board,
+            turn,
+            en_passant: en_passant_right,
+            castling_rights,
+            halfmoves: halfmoves_b,
+            hash: 0,
+        };
+        board.hash = board.calculate_hash();
         Ok(board)
     }
 
@@ -247,7 +236,6 @@ impl Board {
     pub fn get_enpassant(&self) -> Bitboard {
         self.en_passant
     }
-
 
     pub fn get_bit_board(&self, i: usize) -> Bitboard {
         self.piece_bb[i]
@@ -373,20 +361,17 @@ impl Board {
     pub fn sq_attacked_by<S: Side>(&self, sq: Square) -> bool {
         let attacker_pawns = self.piece_bb[S::OFFSET + Pawn.index()];
         if (PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & attacker_pawns) > EMPTY_BB {
-
             return true;
         }
 
         let attacker_knights = self.piece_bb[S::OFFSET + Knight.index()];
         if (KNIGHT_PATTERNS[sq.usize()] & attacker_knights) > EMPTY_BB {
-
             return true;
         }
 
-        let attacking_king = self.piece_bb[S::OFFSET + King.index()]; 
-        
+        let attacking_king = self.piece_bb[S::OFFSET + King.index()];
+
         if (KING_PATTERNS[sq.usize()] & attacking_king) > EMPTY_BB {
-            
             return true;
         }
 
@@ -394,7 +379,6 @@ impl Board {
             self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Bishop.index()];
 
         if (self.diag_lines_w_bound(sq) & attack_bishop_queens) > EMPTY_BB {
-
             return true;
         }
 
@@ -402,8 +386,6 @@ impl Board {
             self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Rook.index()];
 
         if (self.straight_lines_w_bound(sq) & attack_rook_queens) > EMPTY_BB {
-
-
             return true;
         }
 
@@ -412,7 +394,6 @@ impl Board {
 
     #[inline(always)]
     pub fn get_king_square<S: Side>(&self) -> Square {
-
         Square::from_u8(self.piece_bb[S::OFFSET + King.index()].lsb().u8())
     }
 
@@ -424,52 +405,52 @@ impl Board {
         return self.get_piece(square) as usize;
     }
 
+    pub fn count_material(&self) -> i32 {
+        let mut result = 0i32;
+        result += self.piece_bb[Pawn.index()].count_ones() as i32;
+        result += self.piece_bb[Bishop.index()].count_ones() as i32 * 3;
+        result += self.piece_bb[Knight.index()].count_ones() as i32 * 3;
+        result += self.piece_bb[Rook.index()].count_ones() as i32 * 5;
+        result += self.piece_bb[Queen.index()].count_ones() as i32 * 9;
 
-    pub fn count_material(&self) -> f32 {
-        let mut result = 0.0f32;
-        result += (self.piece_bb[Pawn.index()].count_ones() as f32) * 1.0;
-        result += (self.piece_bb[Bishop.index()].count_ones() as f32) * 3.0;
-        result += (self.piece_bb[Knight.index()].count_ones() as f32) * 3.0;
-        result += (self.piece_bb[Rook.index()].count_ones() as f32) * 5.0;
-        result += (self.piece_bb[Queen.index()].count_ones() as f32) * 9.0;
-
-        result -= (self.piece_bb[Pawn.index() + Black.offset()].count_ones() as f32) * 1.0;
-        result -= (self.piece_bb[Bishop.index() + Black.offset()].count_ones() as f32) * 3.0;
-        result -= (self.piece_bb[Knight.index() + Black.offset()].count_ones() as f32) * 3.0;
-        result -= (self.piece_bb[Rook.index() + Black.offset()].count_ones() as f32) * 5.0;
-        result -= (self.piece_bb[Queen.index() + Black.offset()].count_ones() as f32) * 9.0;
+        result -= self.piece_bb[Pawn.index() + Black.offset()].count_ones() as i32;
+        result -= self.piece_bb[Bishop.index() + Black.offset()].count_ones() as i32 * 3;
+        result -= self.piece_bb[Knight.index() + Black.offset()].count_ones() as i32 * 3;
+        result -= self.piece_bb[Rook.index() + Black.offset()].count_ones() as i32 * 5;
+        result -= self.piece_bb[Queen.index() + Black.offset()].count_ones() as i32 * 9;
 
         match self.turn {
             White => result,
-            _ => -result
+            _ => -result,
         }
     }
 
     #[inline(always)]
-    pub fn result(&self) -> f32 {
+    pub fn result(&self) -> i32 {
         match self.turn {
             White => {
                 if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
-                    return 1000.0;
+                    return 1000;
                 }
-                0.0
-            },
+                0
+            }
             Black => {
                 if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
-                    return 1000.0;
+                    return 1000;
                 }
-                0.0
-            },
-            _ => {panic!()}
+                0
+            }
+            _ => {
+                panic!()
+            }
         }
     }
-
 
     pub fn qualify_move(&self, m: &str) -> Result<Move, Box<dyn Error>> {
         match self.turn {
             White => self.move_matching::<WhiteSide>(m),
             Black => self.move_matching::<BlackSide>(m),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -482,54 +463,65 @@ impl Board {
         let from_piece = self.get_piece(from_square);
         let to_piece = self.get_piece(to_square);
         let to_board = to_square.to_bitboard();
-
         let mut flags = Move::QUIET;
 
         match from_piece {
             King => {
                 if from_square == Square::E1 || from_square == Square::E8 {
                     if to_square == Square::G1 || to_square == Square::G8 {
-                            flags = Move::KING_CASTLE;
-                        }
-                        else if to_square == Square::C1 || to_square == Square::C8 {
-                            flags = Move::QUEEN_CASTLE;
-                        }
+                        flags = Move::KING_CASTLE;
+                    } else if to_square == Square::C1 || to_square == Square::C8 {
+                        flags = Move::QUEEN_CASTLE;
+                    }
                 }
-            },
-            Pawn => {
-                match to_piece {
-                    Empty => {
-                        if to_board == self.en_passant {
-                            flags = Move::EN_PASSANT;
-                        }
-                        else if S::shift_up(from_square.to_bitboard()) & to_board != EMPTY_BB {
-                            if to_board == S::LAST_RANK {
-                                flags = match &m[5..5] {
-                                    "q" => Move::PROMO_QUEEN,
-                                    "n" => Move::PROMO_KNIGHT,
-                                    "r" => Move::PROMO_ROOK,
-                                    "b" => Move::PROMO_BISHOP,
-                                    _ => panic!()
-                                };
+                if to_piece != Empty {
+                    flags = Move::CAPTURE
+                }
+            }
+            Pawn => match to_piece {
+                Empty => {
+                    if to_board == self.en_passant {
+                        flags = Move::EN_PASSANT;
+                    } else if S::shift_up(from_square.to_bitboard()) & to_board != EMPTY_BB {
+                        if to_board & S::LAST_RANK != EMPTY_BB {
+                            if let Some(c) = m.chars().nth(4) {
+                            
+                                flags = match c {
+                                'q' => Move::PROMO_QUEEN,
+                                'n' => Move::PROMO_KNIGHT,
+                                'r' => Move::PROMO_ROOK,
+                                'b' => Move::PROMO_BISHOP,
+                                _ => panic!(),
+                            };
+                            } else {
+                                return Err(
+                                    format!("Should be en passant_capture, no 5th char").into()
+                                );
                             }
                         }
-                        else { 
-                            flags = Move::DOUBLE_PAWN;
-                        }
-                    },
-                    _ => {
-                        if to_board & S::LAST_RANK != EMPTY_BB {
-                            flags = match &m[5..5] {
-                                "q" => Move::PROMO_CAP_QUEEN,
-                                "n" => Move::PROMO_CAP_KNIGHT,
-                                "r" => Move::PROMO_CAP_ROOK,
-                                "b" => Move::PROMO_CAP_BISHOP,
-                                _ => panic!()
+                    } else {
+                        flags = Move::DOUBLE_PAWN;
+                    }
+                }
+                _ => {
+                   
+              
+                    if to_board & S::LAST_RANK != EMPTY_BB {
+                        
+                        if let Some(c) = m.chars().nth(4) {
+                            flags = match c {
+                                'q' => Move::PROMO_CAP_QUEEN,
+                                'n' => Move::PROMO_CAP_KNIGHT,
+                                'r' => Move::PROMO_CAP_ROOK,
+                                'b' => Move::PROMO_CAP_BISHOP,
+                                _ => panic!(),
                             };
+                        } else {
+                            return Err(format!("Should be en passant_capture, no 5th char").into());
                         }
-                        else {
-                            flags = Move::CAPTURE;
-                        }
+                    } else {
+                   
+                        flags = Move::CAPTURE;
                     }
                 }
             },
@@ -538,11 +530,9 @@ impl Board {
                     flags = Move::CAPTURE
                 }
             }
-            
         }
         Ok(Move::new(from_square, to_square, flags))
     }
-
 
     pub fn get_color(&self, square: Square) -> Color {
         if self.piece_bb[0] & (square.to_bitboard()) != EMPTY_BB {
@@ -551,8 +541,6 @@ impl Board {
             return Black;
         }
     }
-
-
 
     pub fn print(&self) -> () {
         println!("  A B C D E F G H");
@@ -577,67 +565,63 @@ impl Board {
         println!("  A B C D E F G H");
     }
 
-
     pub fn print_bitboards(&self, color: Color) {
         for i in 0..6 {
             self.piece_bb[i + color.offset()].print();
         }
     }
 
-}
 
+
+}
 
 
 #[cfg(test)]
 mod test {
     use crate::chess::Board;
-    use crate::chess::square::Square;
     use crate::chess::chessMove::Move;
+    use crate::chess::square::Square;
 
-    #[test] 
+    #[test]
     fn default_should_be_equal_0() {
         assert_eq!(
             Board::default().count_material(),
-            0.0,
+            0,
             "Default evaluation is non Zero"
         );
     }
 
     #[test]
     fn black_loses_pawn() {
-
         let m1 = Move::new(Square::E2, Square::E4, 1);
-        let m2 = Move::new(Square::B7, Square::B5,1);
+        let m2 = Move::new(Square::B7, Square::B5, 1);
         let m3 = Move::new(Square::F1, Square::B5, 4);
         let m4 = Move::new(Square::A7, Square::A6, 0);
 
         let mut board = Board::default();
-        
+
         board.make_pl_move(m1);
         board.make_pl_move(m2);
         board.make_pl_move(m3);
 
         assert_eq!(
             board.count_material(),
-            -1.0,
+            -1,
             "Black lost a pawn and should evaluate to -1.0"
         );
 
         board.make_pl_move(m4);
         assert_eq!(
             board.count_material(),
-            1.0,
+            1,
             "White won a pawn and should evalute to 1.0"
         );
     }
 
-
-
     #[test]
     fn white_loses_queen() {
-
         let m1 = Move::new(Square::E2, Square::E4, Move::DOUBLE_PAWN);
-        let m2 = Move::new(Square::G8, Square::F6,Move::QUIET);
+        let m2 = Move::new(Square::G8, Square::F6, Move::QUIET);
         let m3 = Move::new(Square::D1, Square::G4, Move::QUIET);
         let m4 = Move::new(Square::F6, Square::G4, Move::CAPTURE);
         let m5 = Move::new(Square::A2, Square::A3, Move::QUIET);
@@ -649,17 +633,16 @@ mod test {
         board.make_pl_move(m3);
         board.make_pl_move(m4);
 
-
         assert_eq!(
             board.count_material(),
-            -9.0,
+            -9,
             "White lost its queen should be -9.0"
         );
 
         board.make_pl_move(m5);
         assert_eq!(
             board.count_material(),
-            9.0,
+            9,
             "Black won whites queen should be -9.0"
         );
     }

@@ -81,6 +81,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     mangager.start_protocol();
     
+
+   
     // let m1 = Move::new(Square::E2, Square::E4, 1);
     // let m2 = Move::new(Square::B7, Square::B5,1);
     // let m3 = Move::new(Square::F1, Square::B5, 4);
