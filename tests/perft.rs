@@ -10,48 +10,37 @@ use chess_bot::chess::{Game, board::Board};
 
 use crate::common::print_test;
 
-pub fn perft_copy_single_threaded(board: &Board, depth: u8) -> usize{
+
+pub fn perft_copy(board: &Board, depth: u8) -> usize {
+    if depth == 0 {
+        return 1; 
+    }
+
+    let nodes= board.generate_pseudolegals().as_slice().par_iter()
+    .map(|&m| 
+    {
+        if let Some(new_board) = board.make_pl_move_copy(m) {
+            let nodes = perft_copy_private(&new_board, depth - 1);
+            return nodes 
+        }
+        0
+    }
+    ).sum();
+
+    return nodes
+}
+
+
+fn perft_copy_private(board: &Board, depth: u8) -> usize{
+    if depth == 0 {
+        return 1
+    }
 
     let total_nodes: usize = board.generate_pseudolegals().as_slice().iter()
-    .map(|m| 
+    .map(|&m| 
     {
-        if let Some(mut new_board) = board.make_pl_move_copy(*m) {
-            let nodes = private_perft_copy_single_threaded(&new_board,depth - 1);
-            return nodes 
-        }
-        0
-    }
-    ).sum();
-    total_nodes
-}
-
-pub fn private_perft_copy_single_threaded(board: &Board, depth: u8) -> usize {
-    if depth == 0 {
-        return 1; 
-    }
-
-    let mut nodes= board.generate_pseudolegals().as_slice().iter()
-    .map(|m| 
-    {
-        if let Some(mut new_board) = board.make_pl_move_copy(*m) {
-            let nodes = private_perft_copy_single_threaded(&new_board, depth - 1);
-            return nodes 
-        }
-        0
-    }
-    ).sum();
-
-    return nodes
-}
-
-
-fn perft_copy(board: &Board, depth: u8) -> usize{
-
-    let total_nodes: usize = board.generate_pseudolegals().as_slice().par_iter()
-    .map(|m| 
-    {
-        if let Some(mut new_board) = board.make_pl_move_copy(*m) {
-            let nodes = private_perft_copy(&new_board, depth - 1);
+        if let Some(mut new_board) = board.make_pl_move_copy(m) {
+            let nodes = perft_copy_private(&new_board, depth - 1);
             return nodes 
         }
         0
@@ -62,25 +51,6 @@ fn perft_copy(board: &Board, depth: u8) -> usize{
     
 }
 
-fn private_perft_copy(board: &Board, depth: u8) -> usize {
-    
-    if depth == 0 {
-        return 1; 
-    }
-
-    let mut nodes= board.generate_pseudolegals().as_slice().par_iter()
-    .map(|m| 
-    {
-        if let Some(mut new_board) = board.make_pl_move_copy(*m) {
-            let nodes = private_perft_copy(&new_board, depth - 1);
-            return nodes 
-        }
-        0
-    }
-    ).sum();
-
-    return nodes
-}
 
 
 
@@ -92,11 +62,36 @@ fn perft(game: &mut Game, depth: u8) -> usize {
 
     let mut total_nodes: usize = 0;
     
+    let total_nodes: usize = game.generate_pseudolegals().as_slice().par_iter()
+    .map(|&m| 
+    {
+        let mut game_cloned = game.clone();
+        if game_cloned.make_pl_move(m) {
+            let nodes = perft_single(&mut game_cloned, depth - 1);
+            return nodes 
+        }
+        0
+    }
+    ).sum();
+
+
+    total_nodes
+}
+
+
+fn perft_single(game: &mut Game, depth: u8) -> usize {
+
+    if depth == 0 {
+        return 1; 
+    }
+
+    let mut total_nodes: usize = 0;
+    
     let moves = game.generate_pseudolegals();
 
     for &m in moves.as_slice() {
         if game.make_pl_move(m) {
-            total_nodes += perft(game, depth - 1);
+            total_nodes += perft_single(game, depth - 1);
             game.unmake_pl_move(m);
         }
     }
@@ -133,13 +128,12 @@ fn test_perft() {
     TEST_DATA.iter().for_each(
         |test| {
             let board = Board::from_fen(&test.fen).unwrap();
-            let test_name = &("Perft no copy::".to_string() + &test.fen);
-            if perft_copy_single_threaded(&board, test.depth) != test.expected {
-                print_test(test_name, false);
+            if perft_copy(&board, test.depth) != test.expected {
+                print_test(&test.name, false);
                 num_fails += 1;
             }
             else {
-                print_test(test_name, true);
+                print_test(&test.name, true);
             }
         }
     );
@@ -161,20 +155,40 @@ fn test_perft() {
 #[test]
 fn quick_test_perft_default() {
     let board = Board::default();
-    assert_eq!(perft_copy_single_threaded(&board, 4), 197281);
+    assert_eq!(perft_copy(&board, 4), 197281);
 }
 
 
 #[test]
 fn quick_test_perft_kiwipete() {
     let board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq").unwrap();
-    assert_eq!(perft_copy_single_threaded(&board, 3), 97862);
+    assert_eq!(perft_copy(&board, 3), 97862);
 }
 
 
 #[test]
 fn quick_test_perft_1() {
     let board = Board::from_fen("8/8/8/8/8/K7/P7/k7 w - - 0 1").unwrap();
-    assert_eq!(perft_copy_single_threaded(&board, 6), 6249);
+    assert_eq!(perft_copy(&board, 6), 6249);
+}
+
+#[test]
+fn quick_test_perft_default_no_copy() {
+    let mut game = Game::default();
+    assert_eq!(perft(&mut game, 4), 197281);
+}
+
+
+#[test]
+fn quick_test_perft_kiwipete_no_copy() {
+    let mut game = Game::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq").unwrap();
+    assert_eq!(perft(&mut game, 3), 97862);
+}
+
+
+#[test]
+fn quick_test_perft_1_no_copy() {
+    let mut game = Game::from_fen("8/8/8/8/8/K7/P7/k7 w - - 0 1").unwrap();
+    assert_eq!(perft(&mut game, 6), 6249);
 }
 

@@ -442,13 +442,13 @@ impl Board {
         match self.turn {
             White => {
                 if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
-                    return 1000;
+                    return -3_000_000;
                 }
                 0
             }
             Black => {
                 if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
-                    return 1000;
+                    return -3_000_000;
                 }
                 0
             }

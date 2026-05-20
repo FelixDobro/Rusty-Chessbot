@@ -98,16 +98,16 @@ fn perft(game: &mut Game, depth: u8, move_list: &mut MoveList<256>) -> usize {
 
 fn main() -> Result<(), Box<dyn Error>> {
 
-    // let mut mangager = UCIManager::new(
-    //     NegaMaxCopy,
-    //     MaterialEvaluator, 
-    //     NumericSorting
-    // );
+    let mut mangager = UCIManager::new(
+        NegaMaxCopy,
+        MaterialEvaluator, 
+        NumericSorting
+    );
 
-    // mangager.start_protocol();
+    mangager.start_protocol();
     
-    let mut game = Game::from_fen("4k2r/6r1/8/8/8/8/3R4/R3K3 w Qk - 0 1").unwrap();
-    game.get_board().print();
+    // let mut game = Game::from_fen("4k2r/6r1/8/8/8/8/3R4/R3K3 w Qk - 0 1").unwrap();
+    // game.get_board().print();
     // game.make_pl_move(Move::from_string("d2d3", &game).unwrap());
 
     // game.get_board().print();
@@ -123,7 +123,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // println!("{:?}", game.undo_info);
     // game.unmake_pl_move(m_critical);
 
-    perft(&mut game, 5, &mut MoveList::new());
     // let m1 = Move::new(Square::E2, Square::E4, 1);
     // let m2 = Move::new(Square::B7, Square::B5,1);
     // let m3 = Move::new(Square::F1, Square::B5, 4);
