@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::chess::bitboard::Bitboard;
+use crate::chess::board::{bitboard::Bitboard, Board};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Debug)]
 #[repr(transparent)]

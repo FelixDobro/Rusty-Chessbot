@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+criterion = "0.8.2"
 rayon = "1.12.0"
 rstest = "0.26.1"
 rstest_reuse = "0.7.0"
 
-[features]
-slow_tests = []
+[[bench]]

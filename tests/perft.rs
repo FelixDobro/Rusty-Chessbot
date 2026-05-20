@@ -6,7 +6,7 @@ use rstest_reuse::apply;
 use std::time::Instant;
 use rstest::rstest;
 use rayon::prelude::*;
-use chess_bot::chess::Board;
+use chess_bot::chess::{Game, board::Board};
 
 use crate::common::print_test;
 
@@ -84,14 +84,36 @@ fn private_perft_copy(board: &Board, depth: u8) -> usize {
 
 
 
+fn perft(game: &mut Game, depth: u8) -> usize {
+
+    if depth == 0 {
+        return 1; 
+    }
+
+    let mut total_nodes: usize = 0;
+    
+    let moves = game.generate_pseudolegals();
+
+    for &m in moves.as_slice() {
+        if game.make_pl_move(m) {
+            total_nodes += perft(game, depth - 1);
+            game.unmake_pl_move(m);
+        }
+    }
+
+    total_nodes
+}
+
+
+
 #[test]
 #[ignore = "Takes very long"]
-fn test_perft() {
+fn test_perft_no_copy() {
     let mut num_fails = 0;
     TEST_DATA.iter().for_each(
         |test| {
-            let board = Board::from_fen(&test.fen).unwrap();
-            if perft_copy(&board, test.depth) != test.expected {
+            let mut game = Game::from_fen(&test.fen).unwrap();
+            if perft(&mut game, test.depth) != test.expected {
                 print_test(&test.name, false);
                 num_fails += 1;
             }
@@ -103,6 +125,26 @@ fn test_perft() {
     if num_fails != 0 {panic!()}
 }
 
+
+#[test]
+#[ignore = "Takes very long"]
+fn test_perft() {
+    let mut num_fails = 0;
+    TEST_DATA.iter().for_each(
+        |test| {
+            let board = Board::from_fen(&test.fen).unwrap();
+            let test_name = &("Perft no copy::".to_string() + &test.fen);
+            if perft_copy_single_threaded(&board, test.depth) != test.expected {
+                print_test(test_name, false);
+                num_fails += 1;
+            }
+            else {
+                print_test(test_name, true);
+            }
+        }
+    );
+    if num_fails != 0 {panic!()}
+}
 
 
 // #[test]

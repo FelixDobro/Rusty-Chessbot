@@ -1,8 +1,6 @@
 use std::sync::LazyLock;
 
-use rstest::rstest;
-use rstest_reuse::template;
-
+#[derive(Debug, Clone)]
 pub struct PerftTestCase {
     pub name: String,
     pub fen: String,
@@ -31,3 +29,5 @@ pub static TEST_DATA: LazyLock<Vec<PerftTestCase>> = LazyLock::new(|| load_perft
 pub fn print_test(name: &str, success: bool) {
     println!("test {} ... {}", name, if success {"ok"} else {"Failed!"});
 }
+
+

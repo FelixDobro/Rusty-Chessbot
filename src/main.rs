@@ -8,12 +8,12 @@ mod uci;
 use core::time;
 use std::error::Error;
 use std::sync::LazyLock;
-use crate::chess::Board;
-use crate::chess::game::Game;
-use crate::chess::chessMove::{*};
+use crate::chess::board::Board;
+use crate::chess::Game;
+use crate::chess::chess_move::{*};
 use crate::chess::square::Square;
 use crate::chess::constants::{*};
-use crate::chess::hash::{*};
+use crate::chess::board::hash::{*};
 use crate::move_sorting::{NoSorting, NumericSorting};
 use crate::search::SearchAlgorithm;
 use crate::uci::UCIManager;
@@ -70,19 +70,60 @@ fn private_perft_copy(board: &Board, depth: u8) -> usize {
 }
 
 
+fn perft(game: &mut Game, depth: u8, move_list: &mut MoveList<256>) -> usize {
+
+    if depth == 0 {
+        return 1; 
+    }
+
+    let mut total_nodes: usize = 0;
+    
+    let moves = game.generate_pseudolegals();
+    
+    for &m in moves.as_slice() {
+        if game.make_pl_move(m) {
+            move_list.push(m);
+
+            total_nodes += perft(game, depth - 1, move_list);
+            move_list.pop();
+            game.unmake_pl_move(m);
+        }
+    }
+
+    total_nodes
+}
+
+
+
 
 fn main() -> Result<(), Box<dyn Error>> {
 
-    let mut mangager = UCIManager::new(
-        NegaMaxCopy,
-        MaterialEvaluator, 
-        NumericSorting
-    );
+    // let mut mangager = UCIManager::new(
+    //     NegaMaxCopy,
+    //     MaterialEvaluator, 
+    //     NumericSorting
+    // );
 
-    mangager.start_protocol();
+    // mangager.start_protocol();
     
+    let mut game = Game::from_fen("4k2r/6r1/8/8/8/8/3R4/R3K3 w Qk - 0 1").unwrap();
+    game.get_board().print();
+    // game.make_pl_move(Move::from_string("d2d3", &game).unwrap());
 
-   
+    // game.get_board().print();
+    // game.make_pl_move(Move::from_string("h7h6", &game).unwrap());
+    
+    // game.get_board().print();
+    // game.make_pl_move(Move::from_string("c1h6", &game).unwrap());
+
+    // game.get_board().print();
+    // let m_critical = Move::from_string("h8h7", &game).unwrap();
+    // game.make_pl_move(m_critical);
+
+    // println!("{:?}", game.undo_info);
+    // game.unmake_pl_move(m_critical);
+
+    perft(&mut game, 5, &mut MoveList::new());
     // let m1 = Move::new(Square::E2, Square::E4, 1);
     // let m2 = Move::new(Square::B7, Square::B5,1);
     // let m3 = Move::new(Square::F1, Square::B5, 4);

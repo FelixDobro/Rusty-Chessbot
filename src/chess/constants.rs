@@ -5,7 +5,7 @@ use rayon::iter::Empty;
 
 use crate::chess::square::Square;
 
-use super::bitboard::{*};
+use crate::chess::board::bitboard::{*};
 
 pub const NUM_PIECES: usize = 6;
 pub const NUM_COLORS: usize = 2;

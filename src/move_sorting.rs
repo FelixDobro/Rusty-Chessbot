@@ -1,6 +1,6 @@
-use crate::chess::chessMove::MoveList;
-use crate::chess::chessMove::Move;
-use crate::chess::chessMove::MOVE_GEN_SIZE;
+use crate::chess::chess_move::MoveList;
+use crate::chess::chess_move::Move;
+use crate::chess::chess_move::MOVE_GEN_SIZE;
 
 pub trait MoveSortingAlgorithm {
     fn move_iter(move_list: &mut MoveList<MOVE_GEN_SIZE>) -> impl Iterator<Item = &Move>;

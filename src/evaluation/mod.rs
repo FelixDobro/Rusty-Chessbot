@@ -1,4 +1,4 @@
-use crate::chess::{Board, game::Game};
+use crate::chess::board::Board;
 pub mod static_evaluation;
 
 

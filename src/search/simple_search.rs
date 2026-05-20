@@ -1,6 +1,5 @@
-use crate::chess::game::{Game};
-use crate::chess::Board;
-use crate::chess::chessMove::Move;
+use crate::chess::{Game};
+use crate::chess::board::Board;
 use crate::evaluation::BoardEvaluator;
 use crate::evaluation::static_evaluation::MaterialEvaluator;
 use crate::move_sorting::MoveSortingAlgorithm;

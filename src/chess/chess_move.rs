@@ -1,7 +1,7 @@
 use core::fmt;
 use std::error::Error;
 
-use crate::chess::{game::Game, square::Square};
+use crate::chess::{Game, board::bitboard::{self, Bitboard}, square::Square};
 
 
 pub const MOVE_GEN_SIZE: usize = 256;
@@ -85,6 +85,16 @@ impl Move {
 
 
     #[inline(always)]
+    pub fn split(self) -> (Square, Square, Bitboard, Bitboard) {
+        let from = self.from();
+        let to = self.to();
+        let from_board = from.to_bitboard();
+        let to_board = to.to_bitboard();
+        (from, to, from_board, to_board)
+    }
+
+
+    #[inline(always)]
     pub fn is_quiet(self) -> bool {
         self.flags() == 0 
     }
@@ -124,7 +134,7 @@ impl fmt::Display for Move {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MoveList<const N: usize> {
     moves: [Move; N],
     count: usize,

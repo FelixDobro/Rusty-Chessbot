@@ -1,4 +1,5 @@
-use super::square::Square;
+use super::Square;
+
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
     ShrAssign,

@@ -2,7 +2,7 @@ mod common;
 
 
 use common::TEST_DATA;
-use chess_bot::chess::{Board, chessMove::Move};
+use chess_bot::chess::{board::Board, chess_move::Move};
 
 fn test_1_move_deep(board: &Board, fen: &str, parent_move: Move) {
     board.generate_pseudolegals().as_slice()

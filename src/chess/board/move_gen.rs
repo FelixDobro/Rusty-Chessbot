@@ -1,21 +1,20 @@
 use super::Board;
-use crate::chess::chessMove::{*};
-use crate::chess::constants::{*};
-use crate::chess::constants::Color::{White, Black};
+use crate::chess::UndoInfo;
+use crate::chess::chess_move::*;
+use crate::chess::constants::Color::{Black, White};
+use crate::chess::constants::*;
 
-use crate::chess::constants::Piece::{*};
+use crate::chess::constants::Piece::*;
 
-use crate::chess::bitboard::{*};
-use crate::chess::bitboard::EMPTY as EMPTY_BB;
-use crate::chess::square::{*};
+use super::bitboard::EMPTY as EMPTY_BB;
+use super::bitboard::*;
+use crate::chess::square::*;
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
 use std::f32::consts::E;
 
-
 impl Board {
-
     pub fn generate_pseudolegals(&self) -> MoveList<MOVE_GEN_SIZE> {
         match self.turn {
             White => self.pseudolegal_moves::<WhiteSide>(),
@@ -35,55 +34,52 @@ impl Board {
         self.castling_moves::<S>(&mut move_list);
         move_list
     }
-    
+
     #[inline(always)]
     pub fn castling_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
-    
-        
         if !self.sq_attacked_by::<S::OPPOSITE>(Square::E1) {
             if self.castling_rights & CastlingRights::KingCastleWhite.index() != 0 {
-            if self.occupied & WHITE_KING_CASTLE_BLOCKERS == EMPTY_BB {
-                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F1)) 
-                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G1))
-                {
-                    move_list.push(Move::new(Square::E1, Square::G1, Move::KING_CASTLE));
-                }
+                if self.occupied & WHITE_KING_CASTLE_BLOCKERS == EMPTY_BB {
+                    if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F1))
+                        && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G1))
+                    {
+                        move_list.push(Move::new(Square::E1, Square::G1, Move::KING_CASTLE));
+                    }
                 }
             }
 
             if self.castling_rights & CastlingRights::QueenCastleWhite.index() != 0 {
-            if self.occupied & WHITE_QUEEN_CASTLE_BLOCKERS == EMPTY_BB {
-                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::C1))
-                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D1)) {
-                    move_list.push(Move::new(Square::E1, Square::C1, Move::QUEEN_CASTLE));
-                }
+                if self.occupied & WHITE_QUEEN_CASTLE_BLOCKERS == EMPTY_BB {
+                    if !(self.sq_attacked_by::<S::OPPOSITE>(Square::C1))
+                        && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D1))
+                    {
+                        move_list.push(Move::new(Square::E1, Square::C1, Move::QUEEN_CASTLE));
+                    }
                 }
             }
         }
-        
 
         if !self.sq_attacked_by::<S::OPPOSITE>(Square::E8) {
             if self.castling_rights & CastlingRights::KingCastleBlack.index() != 0 {
-            if self.occupied & BLACK_KING_CASTLE_BLOCKERS == EMPTY_BB {
-                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F8)) 
-                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G8)) {
-                    move_list.push(Move::new(Square::E8, Square::G8, Move::KING_CASTLE));
+                if self.occupied & BLACK_KING_CASTLE_BLOCKERS == EMPTY_BB {
+                    if !(self.sq_attacked_by::<S::OPPOSITE>(Square::F8))
+                        && !(self.sq_attacked_by::<S::OPPOSITE>(Square::G8))
+                    {
+                        move_list.push(Move::new(Square::E8, Square::G8, Move::KING_CASTLE));
                     }
                 }
-        }
+            }
 
-        
-
-        if self.castling_rights & CastlingRights::QueenCastleBlack.index() != 0 {
-            if self.occupied & BLACK_QUEEN_CASTLE_BLOCKERS == EMPTY_BB{
-                if !(self.sq_attacked_by::<S::OPPOSITE>(Square::C8))
-                && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D8)) {
-                    move_list.push(Move::new(Square::E8, Square::C8, Move::QUEEN_CASTLE));
-                }
+            if self.castling_rights & CastlingRights::QueenCastleBlack.index() != 0 {
+                if self.occupied & BLACK_QUEEN_CASTLE_BLOCKERS == EMPTY_BB {
+                    if !(self.sq_attacked_by::<S::OPPOSITE>(Square::C8))
+                        && !(self.sq_attacked_by::<S::OPPOSITE>(Square::D8))
+                    {
+                        move_list.push(Move::new(Square::E8, Square::C8, Move::QUEEN_CASTLE));
+                    }
                 }
             }
         }
-        
     }
 
     #[inline(always)]
@@ -113,7 +109,6 @@ impl Board {
         }
     }
 
-
     #[inline(always)]
     pub fn queen_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut queen_board = self.piece_bb[S::OFFSET + Queen.index()];
@@ -125,11 +120,10 @@ impl Board {
             let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
             let mut pattern_board = STRAIGHT_LINES_MAGIC[from_sqaure.usize()][index as usize];
             let mask = DIAGONAL_LINES[from_sqaure.usize()];
-            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64())};
+            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
             let diag_patterns = DIAG_LINES_MAGIC[from_sqaure.usize()][index as usize];
 
             pattern_board |= diag_patterns;
-
 
             let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
             let mut normal_moves =
@@ -180,7 +174,6 @@ impl Board {
         }
     }
 
-
     #[inline(always)]
     pub fn bishop_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut bishop_board = self.piece_bb[S::OFFSET + Bishop.index()];
@@ -225,12 +218,12 @@ impl Board {
 
             while captures != EMPTY_BB {
                 let to_square = captures.lsb();
-    
+
                 move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
                 captures.pop_lsb();
             }
 
-            while normal_moves != EMPTY_BB{
+            while normal_moves != EMPTY_BB {
                 let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
@@ -241,7 +234,6 @@ impl Board {
 
     #[inline(always)]
     pub fn pawn_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
-
         let pawn_board = self.piece_bb[Pawn.index() + S::OFFSET];
 
         let mut pushes = S::shift_up(pawn_board) & !self.occupied;
@@ -252,7 +244,7 @@ impl Board {
 
         let attack_pattern_left = S::pawn_attack_pattern_l(pawn_board);
         let attack_pattern_right = S::pawn_attack_pattern_r(pawn_board);
- 
+
         let all_left_attacks = attack_pattern_left & self.color_bb[S::OPPOSITE::INDEX];
         let mut left_attacks = all_left_attacks & !S::LAST_RANK;
         let mut left_promotions_cap = all_left_attacks & S::LAST_RANK;
@@ -270,7 +262,8 @@ impl Board {
             move_list.push(Move::new(
                 Square::from_u16((to_square - S::UP) as u16),
                 Square::from_u16(to_square as u16),
-                Move::QUIET));
+                Move::QUIET,
+            ));
             single_pushes.pop_lsb();
         }
 
@@ -325,7 +318,6 @@ impl Board {
         }
 
         while right_en_passants != EMPTY_BB {
-
             let to_square = right_en_passants.lsb().i8();
             move_list.push(Move::new(
                 Square::from_u16((to_square + S::DOWN_LEFT) as u16),
@@ -339,26 +331,10 @@ impl Board {
             let to_square_raw = left_promotions_cap.lsb().i8();
             let from_square = Square::from_u16((to_square_raw + S::DOWN_RIGHT) as u16);
             let to_square = Square::from_u16(to_square_raw as u16);
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_KNIGHT,
-            ));
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_BISHOP,
-            ));
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_QUEEN,
-            ));
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_ROOK,
-            ));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_KNIGHT));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_BISHOP));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_QUEEN));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_ROOK));
             left_promotions_cap.pop_lsb();
         }
 
@@ -366,37 +342,17 @@ impl Board {
             let to_square_raw = right_promotions_cap.lsb().i8();
             let from_square = Square::from_u16((to_square_raw + S::DOWN_LEFT) as u16);
             let to_square = Square::from_u16(to_square_raw as u16);
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_KNIGHT,
-            ));
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_BISHOP,
-            ));
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_QUEEN,
-            ));
-            move_list.push(Move::new(
-                from_square,
-                to_square,
-                Move::PROMO_CAP_ROOK,
-            ));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_KNIGHT));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_BISHOP));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_QUEEN));
+            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_ROOK));
             right_promotions_cap.pop_lsb();
         }
     }
 
     #[inline(always)]
     fn promote<S: Side>(&mut self, m: Move) -> bool {
-        let from = m.from();
-        let to = m.to();
-
-        let from_board = from.to_bitboard();
-        let to_board = to.to_bitboard();
+        let (from, to, from_board, to_board) = m.split();
         let movement = from_board ^ to_board;
 
         let p = self.piece[from.usize()];
@@ -438,19 +394,14 @@ impl Board {
 
     #[inline(always)]
     fn quiet<S: Side>(&mut self, m: Move) -> bool {
-        let from = m.from();
-        let to = m.to();
-        let from_board = from.to_bitboard();
-        let to_board = to.to_bitboard();
+        let (from, to, from_board, to_board) = m.split();
         let movement = from_board ^ to_board;
         let p = self.piece[from.usize()];
 
         self.piece_bb[p.index() + S::OFFSET] ^= movement;
         self.occupied ^= movement;
-        
 
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
-
             self.piece_bb[p.index() + S::OFFSET] ^= movement;
             self.occupied ^= movement;
             return false;
@@ -468,36 +419,29 @@ impl Board {
         self.update_en_passant_hash();
         self.en_passant = EMPTY_BB;
 
-
         self.update_hash_piece::<S>(p, from);
         self.update_hash_piece::<S>(p, to);
 
         self.halfmoves = match p {
             Pawn => 0,
-            _ => {self.halfmoves + 1}
+            _ => self.halfmoves + 1,
         };
 
         self.turn = self.turn.opposite();
         self.update_move_hash();
-
 
         true
     }
 
     #[inline(always)]
     fn en_passant<S: Side>(&mut self, m: Move) -> bool {
-        let from = m.from();
-        let to = m.to();
-        
-        let from_board = from.to_bitboard();
-        let to_board = to.to_bitboard();
+        let (from, to, from_board, to_board) = m.split();
 
         let movement = from_board ^ to_board;
         let p = self.piece[from.usize()];
 
         self.piece_bb[p.index() + S::OFFSET] ^= movement;
         self.occupied ^= movement;
-
 
         let remove_board = EN_PASSANT_RM_SQUARES[to.usize()];
         self.occupied ^= remove_board | remove_board;
@@ -510,7 +454,7 @@ impl Board {
         }
 
         self.color_bb[S::OPPOSITE::INDEX] ^= remove_board;
-        
+
         self.color_bb[S::INDEX] ^= movement;
 
         self.piece[from.usize()] = Empty;
@@ -529,7 +473,6 @@ impl Board {
         self.turn = self.turn.opposite();
         self.update_move_hash();
 
-        
         true
     }
 
@@ -547,7 +490,7 @@ impl Board {
 
         self.piece_bb[p_capturing.index() + S::OFFSET] ^= movement;
         self.occupied ^= from_board;
-        
+
         self.piece_bb[p_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
 
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
@@ -557,10 +500,8 @@ impl Board {
             return false;
         }
 
-
         self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
         self.color_bb[S::INDEX] ^= movement;
-
 
         self.piece[from.usize()] = Empty;
         self.piece[to.usize()] = p_capturing;
@@ -586,10 +527,7 @@ impl Board {
 
     #[inline(always)]
     fn capture_promote<S: Side>(&mut self, m: Move) -> bool {
-        let from = m.from();
-        let to = m.to();
-        let from_board = from.to_bitboard();
-        let to_board = to.to_bitboard();
+        let (from, to, from_board, to_board) = m.split();
         let movement = from_board ^ to_board;
 
         let p_capturing = self.piece[from.usize()];
@@ -608,13 +546,13 @@ impl Board {
         }
 
         // bitboard updates
-        
+
         self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
         self.color_bb[S::INDEX] ^= movement;
 
         self.piece[from.usize()] = Empty;
-        let promo= match m.flags() {
-            Move::PROMO_CAP_QUEEN=> Queen,
+        let promo = match m.flags() {
+            Move::PROMO_CAP_QUEEN => Queen,
             Move::PROMO_CAP_KNIGHT => Knight,
             Move::PROMO_CAP_BISHOP => Bishop,
             Move::PROMO_CAP_ROOK => Rook,
@@ -629,7 +567,7 @@ impl Board {
         self.update_hash_caslte(self.castling_rights);
         self.castling_rights &= !CASTLING_RIGHTS[to.usize()];
         self.update_hash_caslte(self.castling_rights);
-        
+
         self.update_hash_piece::<S>(p_capturing, from);
         self.update_hash_piece::<S>(promo, to);
         self.update_hash_piece::<S::OPPOSITE>(p_captured, to);
@@ -637,7 +575,6 @@ impl Board {
         self.halfmoves = 0;
         self.turn = self.turn.opposite();
         self.update_move_hash();
-
 
         true
     }
@@ -648,15 +585,13 @@ impl Board {
 
         self.update_hash_caslte(self.castling_rights);
 
-
         self.castling_rights &= !mechs.castling_rights_update;
         self.update_hash_caslte(self.castling_rights);
-    
-        
+
         self.piece_bb[S::OFFSET + King.index()] ^= mechs.king_movement;
         self.piece_bb[S::OFFSET + Rook.index()] ^= mechs.rook_movement;
 
-        self.color_bb[self.turn.index()] ^= mechs.combined_movement;
+        self.color_bb[S::INDEX] ^= mechs.combined_movement;
 
         self.occupied ^= mechs.combined_movement;
 
@@ -676,9 +611,6 @@ impl Board {
         self.halfmoves += 1;
         self.turn = self.turn.opposite();
         self.update_move_hash();
-
-
-
     }
 
     #[inline(always)]
@@ -698,18 +630,10 @@ impl Board {
             Color::Black => board.make_pseudolegal_move::<BlackSide>(m),
             _ => panic!("No ones turn"),
         };
-        if success {return Some(board)}
-        return None
-    }
-
-    fn unmake_pl_move<S: Side>(&mut self, m: Move) {
-        match m.flags() {
-            Move::QUIET => {
-                self.quiet::<S>(m);
-            },
-            Move::CAPTURE => {},
-            _ => {}
+        if success {
+            return Some(board);
         }
+        return None;
     }
 
     fn make_pseudolegal_move<S: Side>(&mut self, m: Move) -> bool {
@@ -743,9 +667,154 @@ impl Board {
                 }
             }
         }
-    
+
         success
     }
 
+    #[inline(always)]
+    fn undo_state(&mut self, undo_info: &UndoInfo) {
+        self.castling_rights = undo_info.castling_rights;
+        self.en_passant = undo_info.en_passant_square;
+        self.halfmoves = undo_info.halfmove_clock;
+        self.hash = undo_info.hash;
+        self.turn = self.turn.opposite();
+    }
 
+    #[inline(always)]
+    fn unmake_quiet_or_double<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        let (from, to, from_board, to_board) = m.split();
+
+        let movement = from_board ^ to_board;
+        let moved_piece = self.piece[to.index()];
+        self.piece[from.index()] = moved_piece;
+        self.piece[to.index()] = Empty;
+        self.piece_bb[moved_piece.index() + S::OFFSET] ^= movement;
+        self.color_bb[S::INDEX] ^= movement;
+        self.occupied ^= movement;
+
+        self.undo_state(undo_info);
+    }
+
+    #[inline(always)]
+    fn unmake_capture<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        let (from, to, from_board, to_board) = m.split();
+
+        let movement = from_board ^ to_board;
+        let captured_piece = undo_info.captured_piece;
+
+
+        let moved_piece = self.piece[to.index()];
+        self.piece[from.index()] = moved_piece;
+        self.piece[to.index()] = captured_piece;
+        self.piece_bb[moved_piece.index() + S::OFFSET] ^= movement;
+        self.piece_bb[captured_piece.index() + S::OPPOSITE::OFFSET] ^= to_board;
+        self.color_bb[S::INDEX] ^= movement;
+        self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
+        self.occupied ^= from_board;
+
+        self.undo_state(undo_info);
+    }
+
+    #[inline(always)]
+    fn unmake_en_passant<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        let (from, to, from_board, to_board) = m.split();
+
+        let movement = from_board ^ to_board;
+        self.piece[from.index()] = Pawn;
+        self.piece[to.index()] = Empty;
+        self.piece[(to.i8() + S::OPPOSITE::UP) as usize] = Pawn;
+        self.piece_bb[Pawn.index() + S::OFFSET] ^= movement;
+        let pawn_appear_square = S::OPPOSITE::shift_up(to_board);
+
+        self.piece_bb[Pawn.index() + S::OPPOSITE::OFFSET] ^= pawn_appear_square;
+        self.color_bb[S::INDEX] ^= movement;
+        self.color_bb[S::OPPOSITE::INDEX] ^= pawn_appear_square;
+        self.occupied ^= movement ^ pawn_appear_square;
+
+        self.undo_state(undo_info);
+    }
+
+    #[inline(always)]
+    fn unmake_castle<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        let mechs = &CASTLING_TABLE[S::INDEX][(m.flags() & 1) as usize];
+
+        self.piece_bb[S::OFFSET + King.index()] ^= mechs.king_movement;
+        self.piece_bb[S::OFFSET + Rook.index()] ^= mechs.rook_movement;
+
+        self.color_bb[S::INDEX] ^= mechs.combined_movement;
+
+        self.occupied ^= mechs.combined_movement;
+
+        self.piece[mechs.king_disappears.index()] = King;
+        self.piece[mechs.king_appears.index()] = Empty;
+
+        self.piece[mechs.rook_disappears.index()] = Rook;
+        self.piece[mechs.rook_appears.index()] = Empty;
+        self.undo_state(undo_info);
+    }
+
+    #[inline(always)]
+    fn unmake_promote<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        let (from, to, from_board, to_board) = m.split();
+
+        let movement = from_board ^ to_board;
+        let promotion_piece = self.piece[to.index()];
+        self.piece[from.index()] = Pawn;
+        self.piece[to.index()] = Empty;
+        self.piece_bb[Pawn.index() + S::OFFSET] ^= from_board;
+        self.piece_bb[S::OFFSET + promotion_piece.index()] ^= to_board;
+        self.color_bb[S::INDEX] ^= movement;
+
+        self.occupied ^= movement;
+
+        self.undo_state(undo_info);
+    }
+
+    #[inline(always)]
+    fn unmake_capture_promote<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        let (from, to, from_board, to_board) = m.split();
+
+        let movement = from_board ^ to_board;
+        let promotion_piece = self.piece[to.index()];
+        let captured_piece = undo_info.captured_piece;
+        self.piece[from.index()] = Pawn;
+        self.piece[to.index()] = captured_piece;
+        self.piece_bb[Pawn.index() + S::OFFSET] ^= from_board;
+        self.piece_bb[S::OFFSET + promotion_piece.index()] ^= to_board;
+        self.piece_bb[S::OPPOSITE::OFFSET + captured_piece.index()] ^= to_board;
+        self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
+        self.color_bb[S::INDEX] ^= movement;
+
+
+        self.occupied ^= from_board;
+
+        self.undo_state(undo_info);
+    }
+
+    #[inline(always)]
+    fn unmake_pl_move_p<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        match m.flags() {
+            Move::QUIET => self.unmake_quiet_or_double::<S>(m, undo_info),
+            Move::CAPTURE => self.unmake_capture::<S>(m, undo_info),
+            Move::DOUBLE_PAWN => self.unmake_quiet_or_double::<S>(m, undo_info),
+            Move::EN_PASSANT => self.unmake_en_passant::<S>(m, undo_info),
+            _ => {
+                if m.is_castle() {
+                    self.unmake_castle::<S>(m, undo_info);
+                } else if m.is_simple_promo() {
+                    self.unmake_promote::<S>(m, undo_info);
+                } else {
+                    self.unmake_capture_promote::<S>(m, undo_info);
+                }
+            }
+        }
+    }
+
+    pub fn unmake_pl_move(&mut self, m: Move, undo_info: &UndoInfo) {
+        match self.turn {
+            White => self.unmake_pl_move_p::<BlackSide>(m, undo_info),
+            Black => self.unmake_pl_move_p::<WhiteSide>(m, undo_info),
+            _ => panic!("No ones turn?"),
+        }
+    }
 }

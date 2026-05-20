@@ -1,8 +1,8 @@
 pub mod simple_search;
-use crate::chess::game::Game;
+use crate::chess::Game;
 
 use crate::move_sorting::MoveSortingAlgorithm;
-use crate::{chess::chessMove::Move, evaluation::BoardEvaluator};
+use crate::{chess::chess_move::Move, evaluation::BoardEvaluator};
 
 #[derive(Debug, PartialEq)]
 pub struct SearchResult {

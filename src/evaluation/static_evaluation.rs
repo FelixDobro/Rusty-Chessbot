@@ -1,4 +1,4 @@
-use crate::chess::Board;
+use crate::chess::board::Board;
 use crate::chess::constants::{*};
 use crate::chess::square::Square;
 

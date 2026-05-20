@@ -1,6 +1,6 @@
 use chess_bot::chess::square::Square;
-use chess_bot::chess::{chessMove::Move, game::Game};
-use chess_bot::chess::Board;
+use chess_bot::chess::{chess_move::Move,Game};
+use chess_bot::chess::board::Board;
 
 #[test]
 fn qualify_moves_1() {
