@@ -23,6 +23,7 @@ impl NegaMaxCopy {
 
     for &m in Sort::move_iter(&mut board.generate_pseudolegals()) {
         if let Some(mut new_board) = board.make_pl_move_copy(m) {
+            game.push_state(&new_board);
             let value = - Self::negamax_copy_p::<Eval, Sort>(game, &mut new_board, depth - 1, Self::NEG_INFINITY, -alpha);
             game.pop_only_state(&new_board);
             if value > best_val {
@@ -61,6 +62,7 @@ impl NegaMaxCopy {
         for &m in Sort::move_iter(&mut board.generate_pseudolegals()) {
             if let Some(mut new_board) = board.make_pl_move_copy(m) {
                 num_moves_found += 1;
+                game.push_state(&new_board);
                 let new_eval = - Self::negamax_copy_p::<Eval, Sort>(game, &mut new_board, depth - 1, -beta, -alpha);
                 game.pop_only_state(&new_board);
                 if new_eval >= beta{
@@ -72,7 +74,8 @@ impl NegaMaxCopy {
             }
         }
         if num_moves_found == 0 {
-            return board.result();
+            let res= board.result();
+            return res
         }
         alpha
     }
