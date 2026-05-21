@@ -17,12 +17,17 @@ use crate::chess::board::hash::{*};
 use crate::move_sorting::{NoSorting, NumericSorting};
 use crate::search::SearchAlgorithm;
 use crate::uci::UCIManager;
+use chess_bot::chess::board::bitboard;
 use search::simple_search::NegaMaxCopy;
 use evaluation::static_evaluation::MaterialEvaluator;
 use rayon::prelude::*;
 
 
 use std::time::Instant;
+
+pub fn init_lazylocks() {
+    bitboard::init_lazylocks();
+}
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pext_u64, _pdep_u64};
@@ -83,7 +88,8 @@ fn perft(game: &mut Game, depth: u8, move_list: &mut MoveList<256>) -> usize {
     for &m in moves.as_slice() {
         if game.make_pl_move(m) {
             move_list.push(m);
-
+            move_list.print_list();
+            println!();
             total_nodes += perft(game, depth - 1, move_list);
             move_list.pop();
             game.unmake_pl_move(m);
@@ -105,9 +111,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
   
     mangager.start_protocol();
-    
-    // let mut game = Game::from_fen("4k2r/6r1/8/8/8/8/3R4/R3K3 w Qk - 0 1").unwrap();
-    // game.get_board().print();
+
     // game.make_pl_move(Move::from_string("d2d3", &game).unwrap());
 
     // game.get_board().print();

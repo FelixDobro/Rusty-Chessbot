@@ -1,5 +1,6 @@
 use chess_bot::chess::Game;
 use chess_bot::chess::board::Board;
+use chess_bot::chess::board::bitboard::init_lazylocks;
 use criterion::BatchSize;
 use criterion::{Criterion, criterion_group};
 use rayon::prelude::*;
@@ -49,13 +50,16 @@ fn perft(game: &mut Game, depth: u8) -> usize {
 }
 
 fn perft_criterion() -> Criterion {
-    Criterion::default().sample_size(10)
+    Criterion::default().sample_size(20)
 }
 
 fn default_perft_depth_5(c: &mut Criterion) {
     c.bench_function("default_perft_depth_5", |b| {
         b.iter_batched(
-            || Game::default(),             
+            || {
+                init_lazylocks();
+                Game::default()
+            },             
             |mut game| perft(&mut game, 5), 
             BatchSize::SmallInput,
         );
@@ -65,15 +69,45 @@ fn default_perft_depth_5(c: &mut Criterion) {
 fn default_perft_copy_depth_5(c: &mut Criterion) {
     c.bench_function("default_perft_copy_depth_5", |b| {
         b.iter_batched(
-            || (Game::default(), Board::default()), 
+            || {
+                init_lazylocks();
+                (Game::default(), Board::default())
+            }, 
             |(mut game, mut board)| perft_copy(&mut game, &mut board, 5), 
             BatchSize::SmallInput,
         );
     });
 }
 
+fn default_perft_depth_6(c: &mut Criterion) {
+    c.bench_function("default_perft_depth_6", |b| {
+        b.iter_batched(
+            || {
+                init_lazylocks();
+                Game::default()
+            },             
+            |mut game| perft(&mut game, 6), 
+            BatchSize::SmallInput,
+        );
+    });
+}
+
+fn default_perft_copy_depth_6(c: &mut Criterion) {
+    c.bench_function("default_perft_copy_depth_6", |b| {
+        b.iter_batched(
+            || {
+                init_lazylocks();
+                (Game::default(), Board::default())
+            }, 
+            |(mut game, mut board)| perft_copy(&mut game, &mut board, 6), 
+            BatchSize::SmallInput,
+        );
+    });
+}
+
+
 criterion_group!(
     name = perft_bench;
     config = perft_criterion();
-    targets = default_perft_depth_5, default_perft_copy_depth_5
+    targets = default_perft_depth_5, default_perft_depth_6, default_perft_copy_depth_5, default_perft_copy_depth_6
 );

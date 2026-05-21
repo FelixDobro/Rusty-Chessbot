@@ -115,14 +115,7 @@ impl Game {
 
 
     pub fn make_pl_move(&mut self, m: Move) -> bool {
-        let undo_info = UndoInfo {
-            castling_rights: self.board.get_castling_rights(),
-            en_passant_square: self.board.get_enpassant(),
-            halfmove_clock: self.board.get_halfmoves(),
-            captured_piece: self.board.get_piece(m.to()),
-            hash: self.board.get_hash()
-        };
-        if self.board.make_pl_move(m) {
+        if let Some(undo_info) = self.board.make_pl_move(m) {
             self.undo_stack.push(undo_info);
             self.positions.push(self.board.get_hash());
             self.fullmove_counter += self.board.get_turn().opposite() as u16;
@@ -203,17 +196,18 @@ impl Game {
 #[cfg(test)]
 mod test {
     use crate::chess::Game;
+    use crate::chess::constants::Piece;
     use crate::chess::board::Board;
     use crate::chess::chess_move::Move;
 
     fn compare_games(game_1: &Game, game_2: &Game) {
     
         assert_eq!(game_1.fullmove_counter, game_2.fullmove_counter, "Full move counters dont match");
-        assert_eq!(game_1.board.get_pieces(), game_2.board.get_pieces(), "Piece boards dont match dont match");
+        assert_eq!(game_1.board.get_pieces(), game_2.board.get_pieces(), "Piece boards dont match");
         assert_eq!(game_1.board.get_all_bitboards(), game_2.board.get_all_bitboards(), "Bitboards dont match");
         assert_eq!(game_1.board.white_pieces(), game_2.board.white_pieces(), "White bb does not match");
         assert_eq!(game_1.board.get_enpassant(), game_2.board.get_enpassant(), "En passant does not match");
-        assert_eq!(game_1.board.get_halfmoves(), game_2.board.get_halfmoves(), "En passant does not match");
+        assert_eq!(game_1.board.get_halfmoves(), game_2.board.get_halfmoves(), "Halfmoves dont not match");
         assert_eq!(game_1.board.black_pieces(), game_2.board.black_pieces(), "Black bb does not match");
         assert_eq!(game_1.board.get_occupied(), game_2.board.get_occupied(), "Occupied does not match");
         assert_eq!(game_1.board.get_turn(), game_2.board.get_turn(), "Turn does not match");
@@ -305,7 +299,7 @@ mod test {
     #[test]
     fn unmake_simple_promo() {
         let mut game = Game::from_fen("5k2/4P3/5K2/8/8/8/8/8 w - - 0 1").unwrap();
-        let mut initial_game = game.clone();
+        let initial_game = game.clone();
         let promotion = Move::from_string("e7e8q", &game).unwrap();
         assert!(game.make_pl_move(promotion));
     
@@ -319,7 +313,7 @@ mod test {
     #[test]
     fn unmake_promo_cap() {
         let mut game = Game::from_fen("3n1k2/4P3/5K2/8/8/8/8/8 w - - 0 1").unwrap();
-        let mut initial_game = game.clone();
+        let initial_game = game.clone();
         let promotion = Move::from_string("e7d8q", &game).unwrap();
         assert!(game.make_pl_move(promotion));
       

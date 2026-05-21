@@ -196,8 +196,22 @@ pub const DEFAULT_COLOR_W: Bitboard = Bitboard(0x000000000000FFFF);
 pub const DEFAULT_COLOR_B: Bitboard = Bitboard(0xFFFF000000000000);
 pub const DEFAULT_OCCUPIED: Bitboard = Bitboard(0xFFFF00000000FFFF);
 
+
+pub fn init_lazylocks() {
+    LazyLock::force(&EN_PESSANT_UPDATES);
+    LazyLock::force(&EN_PASSANT_RM_SQUARES);
+    LazyLock::force(&KNIGHT_PATTERNS);
+    LazyLock::force(&KING_PATTERNS);
+    LazyLock::force(&DIAGONAL_LINES);
+    LazyLock::force(&DIAG_LINES_MAGIC);
+    LazyLock::force(&STRAIGHT_LINES);
+    LazyLock::force(&STRAIGHT_LINES_MAGIC);
+    LazyLock::force(&PAWN_ATTACKS);
+}
+
+
 // when performing a double move this table maps m.from sqaures to en_passant bitboards
-pub const EN_PESSANT_UPDATES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
+pub static EN_PESSANT_UPDATES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
     let mut table = Box::new([EMPTY; 64]);
     let mut square = 0;
     while square < 64 {
@@ -214,7 +228,7 @@ pub const EN_PESSANT_UPDATES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
 });
 
 // maps move.to squares of an en passant moves to bitboards of captured pawns
-pub const EN_PASSANT_RM_SQUARES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
+pub static EN_PASSANT_RM_SQUARES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
     let mut table = Box::new([EMPTY; 64]);
 
     let mut square = 0;
@@ -231,7 +245,7 @@ pub const EN_PASSANT_RM_SQUARES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|
     table
 });
 
-pub const STRAIGHT_LINES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
+pub static STRAIGHT_LINES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
     let mut table = Box::new([EMPTY; 64]);
     let mut sq = 0;
 
@@ -370,14 +384,13 @@ pub static DIAG_LINES_MAGIC: LazyLock<Box<[[Bitboard; 512]; 64]>> = LazyLock::ne
 });
 
 pub static STRAIGHT_LINES_MAGIC: LazyLock<Box<[[Bitboard; 4096]; 64]>> = LazyLock::new(|| {
-    
     let mut table: Vec<[Bitboard; 4096]> = Vec::with_capacity(64);
 
     // 2. Befülle ihn mit 64 Zeilen aus jeweils 4096 leeren Bitboards
     for _ in 0..64 {
         table.push([EMPTY; 4096]);
     }
-    
+
     let mut sq: u32 = 0;
 
     while sq < 64 {
@@ -440,7 +453,7 @@ pub static STRAIGHT_LINES_MAGIC: LazyLock<Box<[[Bitboard; 4096]; 64]>> = LazyLoc
     table.into_boxed_slice().try_into().unwrap()
 });
 
-pub const PAWN_ATTACKS: LazyLock<Box<[[Bitboard; 64]; 2]>> = LazyLock::new(|| {
+pub static PAWN_ATTACKS: LazyLock<Box<[[Bitboard; 64]; 2]>> = LazyLock::new(|| {
     let mut map: Box<[[Bitboard; 64]; 2]> = Box::new([[EMPTY; 64]; 2]);
     let mut sq: u8 = 0;
     while sq < 64 {
@@ -479,7 +492,7 @@ const fn pre_calculate_king_moves(sq: u8) -> Bitboard {
     Bitboard::from_u64(first_half | (board >> 8) | (board << 8))
 }
 
-pub const KNIGHT_PATTERNS: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
+pub static KNIGHT_PATTERNS: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
     let mut table = Box::new([EMPTY; 64]);
     let mut square = 0;
     while square < 64 {

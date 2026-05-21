@@ -1,4 +1,4 @@
-use chess_bot::chess::*;
+use chess_bot::chess::{board::bitboard::init_lazylocks, *};
 use chess_bot::chess::chess_move::Move;
 use criterion::{Criterion, criterion_group};
 
@@ -19,6 +19,7 @@ fn quiet_move_make_unmake(c: &mut Criterion) {
     |bencher| 
     bencher.iter_batched(
         || {
+            init_lazylocks();
             let game = Game::default();
             let m = Move::from_string("e2e3", &game).unwrap();
             (game, m)
@@ -33,6 +34,7 @@ fn double_pawn_make_unmake(c: &mut Criterion) {
     |bencher| 
     bencher.iter_batched(
         || {
+            init_lazylocks();
             let game = Game::default();
             let m = Move::from_string("e2e4", &game).unwrap();
             (game, m)
@@ -47,6 +49,7 @@ fn capture_make_unmake(c: &mut Criterion) {
     |bencher| 
     bencher.iter_batched(
         || {
+            init_lazylocks();            
             let mut game = Game::default();
             let m = Move::from_string("e2e3", &game).unwrap();
             assert!(game.make_pl_move(m));
@@ -68,6 +71,7 @@ fn make_unmake_castle(c: &mut Criterion) {
     |bencher| 
     bencher.iter_batched(
         || {
+            init_lazylocks();
             let game = Game::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
             let castle = Move::from_string("e1g1", &game).unwrap();
             (game, castle)
@@ -83,6 +87,7 @@ fn make_unmake_promo(c: &mut Criterion) {
     |bencher| 
     bencher.iter_batched(
         || {
+            init_lazylocks();
             let game = Game::from_fen("5k2/4P3/5K2/8/8/8/8/8 w - - 0 1").unwrap();
             let promotion = Move::from_string("e7e8q", &game).unwrap();
             (game, promotion)
@@ -101,6 +106,7 @@ fn make_unmake_copy_quiet(c: &mut Criterion) {
     |bencher| 
     bencher.iter_batched(
         || {
+            init_lazylocks();
             let game = Game::default();
             let m = Move::from_string("e2e3", &game).unwrap();
             (game, m)

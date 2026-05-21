@@ -444,7 +444,7 @@ impl Board {
         self.occupied ^= movement;
 
         let remove_board = EN_PASSANT_RM_SQUARES[to.usize()];
-        self.occupied ^= remove_board | remove_board;
+        self.occupied ^= remove_board;
         self.piece_bb[p.index() + S::OPPOSITE::OFFSET] ^= remove_board;
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
             self.piece_bb[p.index() + S::OFFSET] ^= movement;
@@ -614,7 +614,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn make_pl_move(&mut self, m: Move) -> bool {
+    pub fn make_pl_move(&mut self, m: Move) -> Option<UndoInfo> {
         match self.turn {
             Color::White => self.make_pseudolegal_move::<WhiteSide>(m),
             Color::Black => self.make_pseudolegal_move::<BlackSide>(m),
@@ -630,13 +630,13 @@ impl Board {
             Color::Black => board.make_pseudolegal_move::<BlackSide>(m),
             _ => panic!("No ones turn"),
         };
-        if success {
+        if success.is_some() {
             return Some(board);
         }
         return None;
     }
 
-    fn make_pseudolegal_move<S: Side>(&mut self, m: Move) -> bool {
+    fn make_pseudolegal_move_old<S: Side>(&mut self, m: Move) -> bool {
         let mut success: bool = true;
 
         match m.flags() {
@@ -671,6 +671,151 @@ impl Board {
         success
     }
 
+    fn make_pseudolegal_move<S: Side>(&mut self, m: Move) -> Option<UndoInfo> {
+        let (from, to, from_board, to_board) = m.split();
+        let movement = from_board ^ to_board;
+
+        let piece_moved = self.piece[from.index()];
+        let piece_captured = self.piece[to.index()];
+
+        self.piece[from.index()] = Empty;
+        self.piece[to.index()] = piece_moved;
+
+        self.piece_bb[piece_moved.index() + S::OFFSET] ^= movement;
+        self.color_bb[S::INDEX] ^= movement;
+
+        let undo_info = UndoInfo {
+            castling_rights: self.castling_rights,
+            en_passant_square: self.en_passant,
+            halfmove_clock: self.halfmoves,
+            hash: self.hash,
+            captured_piece: piece_captured
+        };
+        self.update_hash_caslte(self.castling_rights);
+        self.update_hash_piece::<S>(piece_moved, from);
+        self.update_hash_piece::<S>(piece_moved, to);
+        self.halfmoves += 1;
+        self.castling_rights &= !CASTLING_RIGHTS[from.usize()];
+        
+
+        if piece_captured != Empty {
+            self.piece_bb[piece_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
+            self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
+            self.update_hash_piece::<S::OPPOSITE>(piece_captured, to);
+            self.halfmoves = 0;
+            self.castling_rights &= !CASTLING_RIGHTS[to.usize()]
+        }
+
+        let move_flags = m.flags();
+        self.update_en_passant_hash();
+        self.en_passant = EMPTY_BB;
+
+        if move_flags == Move::DOUBLE_PAWN {
+            self.en_passant = EN_PESSANT_UPDATES[from.index()];
+            self.update_en_passant_hash();
+            self.halfmoves = 0;
+        }
+        // Promotion
+        else if move_flags > Move::EN_PASSANT {
+            let promo = match move_flags {
+                Move::PROMO_CAP_QUEEN | Move::PROMO_QUEEN => Queen,
+                Move::PROMO_CAP_KNIGHT | Move::PROMO_KNIGHT=> Knight,
+                Move::PROMO_CAP_BISHOP | Move::PROMO_BISHOP => Bishop,
+                Move::PROMO_CAP_ROOK | Move::PROMO_ROOK => Rook,
+                _ => panic!()
+            };
+            self.piece_bb[promo.index() + S::OFFSET] ^= to_board;
+            self.piece_bb[Pawn.index() + S::OFFSET] ^= to_board;
+            self.piece[to.index()] = promo;
+            self.update_hash_piece::<S>(promo, to);
+            self.update_hash_piece::<S>(Pawn, to);
+            self.halfmoves = 0;
+        }
+        else if move_flags == Move::EN_PASSANT {
+            let pawn_remove_board = EN_PASSANT_RM_SQUARES[to.index()];
+            self.piece_bb[Pawn.index() + S::OPPOSITE::OFFSET] ^= pawn_remove_board;
+            self.color_bb[S::OPPOSITE::INDEX] ^= pawn_remove_board;
+            let ep_square = pawn_remove_board.lsb();
+            self.piece[ep_square.index()] = Empty;
+            self.update_hash_piece::<S::OPPOSITE>(Pawn, ep_square);
+            self.halfmoves = 0;
+        }
+        else if m.is_castle() {
+            let mechs = &CASTLING_TABLE[S::INDEX][(move_flags & 1) as usize];
+            self.piece_bb[Rook.index() + S::OFFSET] ^= mechs.rook_movement;
+            self.color_bb[S::INDEX] ^= mechs.rook_movement;
+            self.piece[mechs.rook_appears.index()] = Rook;
+            self.piece[mechs.rook_disappears.index()] = Empty;
+            self.update_hash_piece::<S>(Rook, mechs.rook_appears);
+            self.update_hash_piece::<S>(Rook, mechs.rook_disappears);
+        }   
+
+        self.occupied = self.color_bb[0] | self.color_bb[1];
+        self.turn = self.turn.opposite();
+        self.update_move_hash();
+        self.update_hash_caslte(self.castling_rights);
+        if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
+            self.unmake_pl_move_p::<S>(m, &undo_info);
+            return None;
+        }
+        
+        Some(undo_info)
+    }
+
+    fn unmake_pl_move_p<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+        let (from, to, from_board, to_board) = m.split();
+        let movement = from_board ^ to_board;
+
+        let p_moved = self.piece[to.index()];
+        
+        self.piece_bb[p_moved.index() + S::OFFSET] ^= movement;
+        self.color_bb[S::INDEX] ^= movement;
+        self.piece[from.index()] = p_moved;
+        self.piece[to.index()] = Empty;
+        let captured_piece = undo_info.captured_piece;
+
+        if captured_piece != Empty {
+            self.piece_bb[captured_piece.index() + S::OPPOSITE::OFFSET] ^= to_board;
+            self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
+            self.piece[to.index()] = captured_piece;
+        }
+
+        let move_flags = m.flags();
+
+        if m.is_promo() {
+
+            let promo = match move_flags {
+                Move::PROMO_CAP_QUEEN | Move::PROMO_QUEEN => Queen,
+                Move::PROMO_CAP_KNIGHT | Move::PROMO_KNIGHT=> Knight,
+                Move::PROMO_CAP_BISHOP | Move::PROMO_BISHOP => Bishop,
+                Move::PROMO_CAP_ROOK | Move::PROMO_ROOK => Rook,
+                _ => panic!()
+            };
+            self.piece_bb[promo.index() + S::OFFSET] ^= from_board;
+            self.piece_bb[S::OFFSET + Pawn.index()] ^= from_board;
+            self.piece[from.index()] = Pawn
+        }
+
+        else if move_flags == Move::EN_PASSANT {
+            let pawn_remove_board = EN_PASSANT_RM_SQUARES[to.index()];
+            self.piece_bb[Pawn.index() + S::OPPOSITE::OFFSET] ^= pawn_remove_board;
+            self.color_bb[S::OPPOSITE::INDEX] ^= pawn_remove_board;
+            let ep_square = pawn_remove_board.lsb();
+            self.piece[ep_square.index()] = Pawn;
+            
+        }
+        else if m.is_castle() {
+            let mechs = &CASTLING_TABLE[S::INDEX][(move_flags & 1) as usize];
+            self.piece_bb[Rook.index() + S::OFFSET] ^= mechs.rook_movement;
+            self.color_bb[S::INDEX] ^= mechs.rook_movement;
+            self.piece[mechs.rook_appears.index()] = Empty;
+            self.piece[mechs.rook_disappears.index()] = Rook;
+        }
+        self.occupied = self.color_bb[0] | self.color_bb[1];
+        self.undo_state(undo_info);
+    }
+
+
     #[inline(always)]
     fn undo_state(&mut self, undo_info: &UndoInfo) {
         self.castling_rights = undo_info.castling_rights;
@@ -701,7 +846,6 @@ impl Board {
 
         let movement = from_board ^ to_board;
         let captured_piece = undo_info.captured_piece;
-
 
         let moved_piece = self.piece[to.index()];
         self.piece[from.index()] = moved_piece;
@@ -785,14 +929,13 @@ impl Board {
         self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
         self.color_bb[S::INDEX] ^= movement;
 
-
         self.occupied ^= from_board;
 
         self.undo_state(undo_info);
     }
 
     #[inline(always)]
-    fn unmake_pl_move_p<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
+    fn unmake_pl_move_p_old<S: Side>(&mut self, m: Move, undo_info: &UndoInfo) {
         match m.flags() {
             Move::QUIET => self.unmake_quiet_or_double::<S>(m, undo_info),
             Move::CAPTURE => self.unmake_capture::<S>(m, undo_info),
