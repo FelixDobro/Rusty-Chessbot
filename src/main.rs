@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // let mut search = Negamax{};
     // let mut mangager = UCIManager::new(Box::new(search));
     // mangager.start_protocol();
-    println!("{}", MG[0 + BlackSide::OFFSET][Square::E2.index()]);
+    println!("{}", MG[0 + WhiteSide::OFFSET][Square::E2.index()]);
     let mut board = Board::default();
     println!("{}", board.eval());
 

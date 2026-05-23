@@ -404,6 +404,7 @@ impl Board {
             self.castling_rights &= !CASTLING_RIGHTS[to.usize()];
             if EVAL {
                 self.rm_eval::<S::OPPOSITE>(piece_captured, to);
+                self.rm_p_eval::<S>(piece_captured);
             }
             self.game_phase -= PHASE_VALUES[piece_captured.index()];
         }
@@ -435,6 +436,7 @@ impl Board {
             if EVAL {
                 self.rm_eval::<S>(piece_moved, to);
                 self.add_eval::<S>(promo, to);
+                self.add_p_eval::<S>(promo);
             }
         }
         else if move_flags == Move::EN_PASSANT {

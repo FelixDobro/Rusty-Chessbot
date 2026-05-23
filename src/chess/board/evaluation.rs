@@ -33,6 +33,7 @@ impl Board {
             let mut piece_bb = self.piece_bb[WhiteSide::OFFSET + i];
             while piece_bb != EMPTY_BB {
                 val += MG[WhiteSide::OFFSET + i][piece_bb.lsb().index()];
+                val += MG_VALUE[i];
                 piece_bb.pop_lsb();
             }
         }
@@ -40,6 +41,7 @@ impl Board {
             let mut piece_bb = self.piece_bb[BlackSide::OFFSET + i];
             while piece_bb != EMPTY_BB {
                 val -= MG[BlackSide::OFFSET + i][piece_bb.lsb().index()];
+                val -= MG_VALUE[i];
                 piece_bb.pop_lsb();
             }
             
@@ -58,6 +60,7 @@ impl Board {
             let mut piece_bb = self.piece_bb[WhiteSide::OFFSET + i];
             while piece_bb != EMPTY_BB {
                 val += EG[WhiteSide::OFFSET + i][piece_bb.lsb().index()];
+                val += EG_VALUE[i];
                 piece_bb.pop_lsb();
             }
         }
@@ -65,6 +68,7 @@ impl Board {
             let mut piece_bb = self.piece_bb[BlackSide::OFFSET + i];
             while piece_bb != EMPTY_BB {
                 val -= EG[BlackSide::OFFSET + i][piece_bb.lsb().index()];
+                val -= EG_VALUE[i];
                 piece_bb.pop_lsb();
             }
             
@@ -90,6 +94,18 @@ impl Board {
     pub fn rm_eval<S: Side>(&mut self, p: Piece, s: Square) {
         self.eval_mg -= MG[p.index() + S::OFFSET][s.index()] * S::MULTIPLIER;
         self.eval_eg -= EG[p.index() + S::OFFSET][s.index()] * S::MULTIPLIER;
+    }
+
+    #[inline(always)]
+    pub fn rm_p_eval<S: Side>(&mut self, p: Piece) {
+        self.eval_mg -= MG_VALUE[p.index() + S::OFFSET];
+        self.eval_eg -= EG_VALUE[p.index() + S::OFFSET];
+    }
+
+    #[inline(always)]
+    pub fn add_p_eval<S: Side>(&mut self, p: Piece) {
+        self.eval_mg += MG_VALUE[p.index() + S::OFFSET];
+        self.eval_eg += EG_VALUE[p.index() + S::OFFSET];
     }
     
     #[inline(always)]
@@ -226,6 +242,10 @@ pub static EG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
 
     table
 });
+
+
+pub const MG_VALUE: [i16; 12] = [82, 337, 365, 477, 1025,  0, -82, -337, -365, -477, -1025,  -0];
+pub const EG_VALUE: [i16; 12]= [94, 281, 297, 512,  936,  0, -94, -281, -297, -512, - 936, - 0];
 
 
 
