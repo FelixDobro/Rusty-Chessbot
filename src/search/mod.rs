@@ -1,8 +1,8 @@
 pub mod simple_search;
-use crate::chess::Game;
+use crate::chess::board::Board;
 
-use crate::move_sorting::MoveSortingAlgorithm;
-use crate::{chess::chess_move::Move, evaluation::BoardEvaluator};
+
+use crate::{chess::chess_move::Move};
 
 #[derive(Debug, PartialEq)]
 pub struct SearchResult {
@@ -11,5 +11,5 @@ pub struct SearchResult {
 }
 
 pub trait SearchAlgorithm {
-    fn search<Eval: BoardEvaluator, Sort: MoveSortingAlgorithm>(&mut self, game: &mut Game, depth: u8) -> Option<SearchResult>;
+    fn search(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult>;
 }

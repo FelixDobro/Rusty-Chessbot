@@ -1,5 +1,5 @@
 use chess_bot::chess::square::Square;
-use chess_bot::chess::{chess_move::Move,Game};
+use chess_bot::chess::{chess_move::Move};
 use chess_bot::chess::board::Board;
 
 #[test]

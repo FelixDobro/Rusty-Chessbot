@@ -99,7 +99,7 @@ impl ZobristTable {
 }
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HashList<const N: usize> {
     
     positions: [u64; N],

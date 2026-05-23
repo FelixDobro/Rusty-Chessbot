@@ -1,7 +1,7 @@
 use core::fmt;
 use std::error::Error;
 
-use crate::chess::{Game, board::bitboard::{self, Bitboard}, square::Square};
+use crate::chess::{board::{Board, bitboard::{self, Bitboard}}, square::Square};
 
 
 pub const MOVE_GEN_SIZE: usize = 256;
@@ -44,8 +44,8 @@ impl Move {
 
 
     #[inline(always)]
-    pub fn from_string(m: &str, game: &Game) -> Result<Move, Box<dyn Error>> {
-        game.get_board().qualify_move(m)
+    pub fn from_string(m: &str, game: &Board) -> Result<Move, Box<dyn Error>> {
+        game.qualify_move(m)
     }
 
 

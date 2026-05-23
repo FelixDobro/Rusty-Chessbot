@@ -1,7 +1,7 @@
+#[allow(dead_code)]
 
 mod chess;
 mod search;
-mod evaluation;
 mod move_sorting;
 mod uci;
 
@@ -9,7 +9,6 @@ use core::time;
 use std::error::Error;
 use std::sync::LazyLock;
 use crate::chess::board::Board;
-use crate::chess::Game;
 use crate::chess::chess_move::{*};
 use crate::chess::square::Square;
 use crate::chess::constants::{*};
@@ -17,9 +16,8 @@ use crate::chess::board::hash::{*};
 use crate::move_sorting::{NoSorting, NumericSorting};
 use crate::search::SearchAlgorithm;
 use crate::uci::UCIManager;
-use chess_bot::chess::board::bitboard;
-use search::simple_search::NegaMaxCopy;
-use evaluation::static_evaluation::MaterialEvaluator;
+use crate::chess::board::bitboard;
+use crate::search::simple_search::Negamax;
 use rayon::prelude::*;
 
 
@@ -32,50 +30,9 @@ pub fn init_lazylocks() {
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pext_u64, _pdep_u64};
 
-fn perft_copy(board: &Board, depth: u8) -> usize{
-
-    let start = Instant::now();
-    let total_nodes: usize = board.generate_pseudolegals().as_slice().iter()
-    .map(|m| 
-    {  
-        if let Some(mut new_board) = board.make_pl_move_copy(*m) {
-            let nodes = private_perft_copy(&new_board, depth - 1);
-            println!("Move: {}, found nodes: {}", m, nodes);
-            return nodes 
-        }
-        0
-    }
-    ).sum();
-    let time = start.elapsed();
-    println!("Found nodes: {}, time: {:?}", total_nodes, time);
-    total_nodes
-    
-}
-
-fn private_perft_copy(board: &Board, depth: u8) -> usize {
-    
-    if depth == 0 {
-        return 1; 
-    }
-    let moves = board.generate_pseudolegals();
 
 
-    let mut nodes= board.generate_pseudolegals().as_slice().iter()
-    .map(|m| 
-    {   
-        if let Some(mut new_board) = board.make_pl_move_copy(*m) {
-            let nodes = private_perft_copy(&new_board, depth - 1);
-            return nodes 
-        }
-        0
-    }
-    ).sum();
-
-    return nodes
-}
-
-
-fn perft(game: &mut Game, depth: u8, move_list: &mut MoveList<256>) -> usize {
+fn perft(board: &mut Board, depth: u8, move_list: &mut MoveList<256>) -> usize {
 
     if depth == 0 {
         return 1; 
@@ -83,16 +40,16 @@ fn perft(game: &mut Game, depth: u8, move_list: &mut MoveList<256>) -> usize {
 
     let mut total_nodes: usize = 0;
     
-    let moves = game.generate_pseudolegals();
+    let moves = board.generate_pseudolegals();
     
     for &m in moves.as_slice() {
-        if game.make_pl_move(m) {
+        if board.make_pl_move(m) {
             move_list.push(m);
             move_list.print_list();
             println!();
-            total_nodes += perft(game, depth - 1, move_list);
+            total_nodes += perft(board, depth - 1, move_list);
             move_list.pop();
-            game.unmake_pl_move(m);
+            board.unmake_pl_move(m);
         }
     }
 
@@ -103,29 +60,33 @@ fn perft(game: &mut Game, depth: u8, move_list: &mut MoveList<256>) -> usize {
 
 
 fn main() -> Result<(), Box<dyn Error>> {
-
-    let mut mangager = UCIManager::new(
-        NegaMaxCopy,
-        MaterialEvaluator, 
-        NumericSorting
-    );
-  
-    mangager.start_protocol();
-
-    // game.make_pl_move(Move::from_string("d2d3", &game).unwrap());
-
-    // game.get_board().print();
-    // game.make_pl_move(Move::from_string("h7h6", &game).unwrap());
     
-    // game.get_board().print();
-    // game.make_pl_move(Move::from_string("c1h6", &game).unwrap());
 
-    // game.get_board().print();
-    // let m_critical = Move::from_string("h8h7", &game).unwrap();
-    // game.make_pl_move(m_critical);
+    let mut search = Negamax{};
 
-    // println!("{:?}", game.undo_info);
-    // game.unmake_pl_move(m_critical);
+
+    let time = Instant::now();
+    let mut board = Board::default();
+    search.search(&mut board, 10);
+    println!("Time: {:?}", time.elapsed());
+    let mut mangager = UCIManager::new(Box::new(search));
+  
+    // mangager.start_protocol();
+
+    // board.make_pl_move(Move::from_string("d2d3", &board).unwrap());
+
+    // board.get_board().print();
+    // board.make_pl_move(Move::from_string("h7h6", &board).unwrap());
+    
+    // board.get_board().print();
+    // board.make_pl_move(Move::from_string("c1h6", &board).unwrap());
+
+    // board.get_board().print();
+    // let m_critical = Move::from_string("h8h7", &board).unwrap();
+    // board.make_pl_move(m_critical);
+
+    // println!("{:?}", board.undo_info);
+    // board.unmake_pl_move(m_critical);
 
     // let m1 = Move::new(Square::E2, Square::E4, 1);
     // let m2 = Move::new(Square::B7, Square::B5,1);

@@ -1,49 +1,29 @@
 
-use crate::chess::Game;
+use crate::chess::board::Board;
 use crate::chess::chess_move::Move;
 use crate::search::SearchAlgorithm;
-use crate::evaluation::BoardEvaluator;
-use crate::move_sorting::MoveSortingAlgorithm;
-
 
 use std::{
     error::Error,
-    io::{Read, Stdin, Stdout, Write, stdin, stdout},
-    str::FromStr,
+    io::{Stdin,stdin},
 };
 
 
 
-pub struct UCIManager<Search, Eval, Sort>
-where 
-Search: SearchAlgorithm,
-Eval: BoardEvaluator,
-Sort: MoveSortingAlgorithm,
+pub struct UCIManager<>
 {   
-    search: Search,
-    eval: Eval,
-    sort: Sort,
-    game: Game,
+    search: Box<dyn SearchAlgorithm>,
+    board: Board,
     std_in: Stdin,
 }
 
-impl<Search, Eval, Sort> UCIManager<Search, Eval, Sort>
-where 
-Search: SearchAlgorithm,
-Eval: BoardEvaluator,
-Sort: MoveSortingAlgorithm,
+impl UCIManager
 {
-    pub fn new(search: Search, eval: Eval, sort: Sort) -> UCIManager<Search, Eval, Sort>
-    where 
-    Search: SearchAlgorithm,
-    Eval: BoardEvaluator,
-    Sort: MoveSortingAlgorithm, 
+    pub fn new(search: Box<dyn SearchAlgorithm>) -> UCIManager
     {
         UCIManager {
             search: search,
-            eval: eval,
-            sort: sort,
-            game: Game::default(),
+            board: Board::default(),
             std_in: stdin(),
         }
     }
@@ -72,8 +52,8 @@ Sort: MoveSortingAlgorithm,
                         println!("uciok");
                     }
 
-                    "ucinewgame" => {
-                        self.game = Game::default();
+                    "ucinewboard" => {
+                        self.board = Board::default();
                     }
 
                     "isready" => {
@@ -86,16 +66,16 @@ Sort: MoveSortingAlgorithm,
                             Some("fen") => {
                                 let fen_parts: Vec<&str> = tokens.by_ref().take(6).collect();
                                 let fen = fen_parts.join(" ");
-                                if let Ok(value) = Game::from_fen(&fen) {
-                                    self.game = value;
+                                if let Ok(value) = Board::from_fen(&fen) {
+                                    self.board = value;
                                 }
                                 let move_token = tokens.next();
                                 match move_token {
                                     Some("moves") => {
                                         while let Some(token) = tokens.next() {
-                                            let m = Move::from_string(token, &self.game)?;
+                                            let m = Move::from_string(token, &self.board)?;
                                           
-                                            self.game.make_pl_move_copy(m);
+                                            self.board.make_pl_move(m);
                                             
                                         }
                                     }
@@ -104,7 +84,7 @@ Sort: MoveSortingAlgorithm,
                             }
 
                             Some("startpos") => {
-                                self.game = Game::default();
+                                self.board = Board::default();
                             }
                             _ => {}
                         };
@@ -116,15 +96,14 @@ Sort: MoveSortingAlgorithm,
                         match depth_token {
                             Some("depth") => {
                                 let next_token = tokens.next();
-                                let maybe_int =
-                                    search_depth = next_token.as_deref().and_then(|i| i.parse::<u8>().ok()).unwrap();
+                                search_depth = next_token.as_deref().and_then(|i| i.parse::<u8>().ok()).unwrap();
                             },
                             _ => {},
                         };
 
                         if let Some(res) = self
                             .search
-                            .search::<Eval,Sort>(&mut self.game, search_depth)
+                            .search(&mut self.board, search_depth)
                         {
                             println!("bestmove {}", res.best_move.to_string());
                         }
