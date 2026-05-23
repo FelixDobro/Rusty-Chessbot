@@ -18,6 +18,7 @@ use crate::search::SearchAlgorithm;
 use crate::uci::UCIManager;
 use crate::chess::board::bitboard;
 use crate::search::simple_search::Negamax;
+use chess_bot::chess::board::evaluation::MG;
 use rayon::prelude::*;
 
 
@@ -62,18 +63,16 @@ fn perft(board: &mut Board, depth: u8, move_list: &mut MoveList<256>) -> usize {
 fn main() -> Result<(), Box<dyn Error>> {
     
 
-    let mut search = Negamax{};
-
-
-    let time = Instant::now();
-    let board = Board::default();
-    println!("{}", board.eval());
-    println!("Time: {:?}", time.elapsed());
+    // let mut search = Negamax{};
     // let mut mangager = UCIManager::new(Box::new(search));
-  
     // mangager.start_protocol();
+    println!("{}", MG[0 + BlackSide::OFFSET][Square::E2.index()]);
+    let mut board = Board::default();
+    println!("{}", board.eval());
 
-    // board.make_pl_move::<true>(Move::from_string("d2d3", &board).unwrap());
+    board.make_pl_move::<true>(Move::from_string("e2e3", &board).unwrap());
+    println!("{}", board.eval());
+
 
     // board.get_board().print();
     // board.make_pl_move::<true>(Move::from_string("h7h6", &board).unwrap());

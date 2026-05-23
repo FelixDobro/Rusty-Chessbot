@@ -173,6 +173,8 @@ impl Color {
         
         unsafe { std::mem::transmute((self as usize ^ 1) as u8) }
     }
+
+
 }
 
 

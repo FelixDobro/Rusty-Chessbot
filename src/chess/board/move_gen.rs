@@ -1,5 +1,5 @@
 use super::Board;
-use crate::chess::board::evaluation::MG;
+use crate::chess::board::evaluation::{MG, PHASE_VALUES};
 use crate::chess::chess_move::*;
 use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::*;
@@ -405,6 +405,7 @@ impl Board {
             if EVAL {
                 self.rm_eval::<S::OPPOSITE>(piece_captured, to);
             }
+            self.game_phase -= PHASE_VALUES[piece_captured.index()];
         }
 
         let move_flags = m.flags();
