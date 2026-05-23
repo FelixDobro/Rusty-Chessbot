@@ -8,8 +8,8 @@ pub struct Negamax;
 
 impl Negamax {
 
-    const INFINITY: i32 = 2_000_000;
-    const NEG_INFINITY: i32 = -2_000_000;
+    const INFINITY: i16 = 10000;
+    const NEG_INFINITY: i16 = -10000;
 
 
     pub fn negamax(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult> {
@@ -19,7 +19,7 @@ impl Negamax {
 
 
     for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
-        if board.make_pl_move(m) {
+        if board.make_pl_move::<true>(m) {
             let value = - self.negamax_p(board, depth - 1, Self::NEG_INFINITY, -alpha);
             board.unmake_pl_move(m);
             if value > best_val {
@@ -44,11 +44,11 @@ impl Negamax {
         &mut self,
         board: &mut Board,
         depth: u8,
-        mut alpha: i32,
-        beta: i32,
-    ) -> i32 {
+        mut alpha: i16,
+        beta: i16,
+    ) -> i16 {
         if depth == 0 {
-            return board.get_eval();
+            return board.eval();
         }  
         if board.can_claim_draw() {
             return 0
@@ -56,7 +56,7 @@ impl Negamax {
 
         let mut num_moves_found = 0;
         for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
-            if board.make_pl_move(m) {
+            if board.make_pl_move::<true>(m) {
                 num_moves_found += 1;
                 let new_eval = - self.negamax_p(board, depth - 1, -beta, -alpha);
                 board.unmake_pl_move(m);

@@ -16,7 +16,7 @@ fn perft(board: &mut Board, depth: u8) -> usize {
         .as_slice()
         .iter()
         .map(|&m| {
-            if board.make_pl_move(m) {
+            if board.make_pl_move::<false>(m) {
                 let nodes = perft(board, depth - 1);
                 board.unmake_pl_move(m);
                 return nodes;

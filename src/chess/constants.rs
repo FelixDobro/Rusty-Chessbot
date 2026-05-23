@@ -180,6 +180,7 @@ pub trait Side {
 
     const INDEX: usize;
     const OFFSET: usize;
+    const MULTIPLIER: i16;
     const UP: i8;
     const DOWN_RIGHT: i8;
     const DOWN_LEFT: i8;
@@ -202,6 +203,7 @@ pub struct WhiteSide;
 impl Side for WhiteSide {
     const INDEX: usize = 0;
     const OFFSET: usize = 0;
+    const MULTIPLIER: i16 = 1;
     const UP: i8 = 8;
     const DOWN_RIGHT: i8 = -7;
     const DOWN_LEFT: i8 = -9;
@@ -234,6 +236,7 @@ pub struct BlackSide;
 impl Side for BlackSide {
     const INDEX: usize = 1;
     const OFFSET: usize = NUM_PIECES as usize;
+    const MULTIPLIER: i16 = -1;
     const UP: i8 = -8;
     const DOWN_LEFT: i8 = 7;
     const DOWN_RIGHT: i8 = 9;

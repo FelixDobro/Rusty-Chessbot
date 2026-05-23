@@ -43,7 +43,7 @@ fn perft(board: &mut Board, depth: u8, move_list: &mut MoveList<256>) -> usize {
     let moves = board.generate_pseudolegals();
     
     for &m in moves.as_slice() {
-        if board.make_pl_move(m) {
+        if board.make_pl_move::<true>(m) {
             move_list.push(m);
             move_list.print_list();
             println!();
@@ -66,24 +66,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 
     let time = Instant::now();
-    let mut board = Board::default();
-    search.search(&mut board, 10);
+    let board = Board::default();
+    println!("{}", board.eval());
     println!("Time: {:?}", time.elapsed());
-    let mut mangager = UCIManager::new(Box::new(search));
+    // let mut mangager = UCIManager::new(Box::new(search));
   
     // mangager.start_protocol();
 
-    // board.make_pl_move(Move::from_string("d2d3", &board).unwrap());
+    // board.make_pl_move::<true>(Move::from_string("d2d3", &board).unwrap());
 
     // board.get_board().print();
-    // board.make_pl_move(Move::from_string("h7h6", &board).unwrap());
+    // board.make_pl_move::<true>(Move::from_string("h7h6", &board).unwrap());
     
     // board.get_board().print();
-    // board.make_pl_move(Move::from_string("c1h6", &board).unwrap());
+    // board.make_pl_move::<true>(Move::from_string("c1h6", &board).unwrap());
 
     // board.get_board().print();
     // let m_critical = Move::from_string("h8h7", &board).unwrap();
-    // board.make_pl_move(m_critical);
+    // board.make_pl_move::<true>(m_critical);
 
     // println!("{:?}", board.undo_info);
     // board.unmake_pl_move(m_critical);

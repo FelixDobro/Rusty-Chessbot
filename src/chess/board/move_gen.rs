@@ -1,4 +1,5 @@
 use super::Board;
+use crate::chess::board::evaluation::MG;
 use crate::chess::chess_move::*;
 use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::*;
@@ -350,17 +351,17 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn make_pl_move(&mut self, m: Move) -> bool {
+    pub fn make_pl_move<const EVAL: bool>(&mut self, m: Move) -> bool {
         match self.turn {
-            Color::White => self.make_pseudolegal_move::<WhiteSide>(m),
-            Color::Black => self.make_pseudolegal_move::<BlackSide>(m),
+            Color::White => self.make_pseudolegal_move::<WhiteSide, EVAL>(m),
+            Color::Black => self.make_pseudolegal_move::<BlackSide, EVAL>(m),
             _ => panic!("No ones turn"),
         }
     }
 
 
 
-    fn make_pseudolegal_move<S: Side>(&mut self, m: Move) -> bool {
+    fn make_pseudolegal_move<S: Side, const EVAL: bool>(&mut self, m: Move) -> bool {
         let (from, to, from_board, to_board) = m.split();
         let movement = from_board ^ to_board;
 
@@ -378,22 +379,32 @@ impl Board {
             en_passant_square: self.en_passant,
             halfmove_clock: self.halfmoves,
             hash: self.hash,
-            captured_piece: piece_captured
+            captured_piece: piece_captured,
+            last_mg: self.eval_mg,
+            last_eg: self.eval_eg,
+            last_phase: self.game_phase
         };
-
+        
         self.update_hash_caslte(self.castling_rights);
         self.update_hash_piece::<S>(piece_moved, from);
         self.update_hash_piece::<S>(piece_moved, to);
         self.halfmoves += 1;
         self.castling_rights &= !CASTLING_RIGHTS[from.usize()];
         
+        if EVAL {
+            self.rm_eval::<S>(piece_moved, from);
+            self.add_eval::<S>(piece_moved, to);
+        }
 
         if piece_captured != Empty {
             self.piece_bb[piece_captured.index() + S::OPPOSITE::OFFSET] ^= to_board;
             self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
             self.update_hash_piece::<S::OPPOSITE>(piece_captured, to);
             self.halfmoves = 0;
-            self.castling_rights &= !CASTLING_RIGHTS[to.usize()]
+            self.castling_rights &= !CASTLING_RIGHTS[to.usize()];
+            if EVAL {
+                self.rm_eval::<S::OPPOSITE>(piece_captured, to);
+            }
         }
 
         let move_flags = m.flags();
@@ -420,6 +431,10 @@ impl Board {
             self.update_hash_piece::<S>(promo, to);
             self.update_hash_piece::<S>(Pawn, to);
             self.halfmoves = 0;
+            if EVAL {
+                self.rm_eval::<S>(piece_moved, to);
+                self.add_eval::<S>(promo, to);
+            }
         }
         else if move_flags == Move::EN_PASSANT {
             let pawn_remove_board = EN_PASSANT_RM_SQUARES[to.index()];
@@ -429,6 +444,9 @@ impl Board {
             self.piece[ep_square.index()] = Empty;
             self.update_hash_piece::<S::OPPOSITE>(Pawn, ep_square);
             self.halfmoves = 0;
+            if EVAL {
+                self.rm_eval::<S>(Pawn, ep_square);
+            }
         }
         else if m.is_castle() {
             let mechs = &CASTLING_TABLE[S::INDEX][(move_flags & 1) as usize];
@@ -438,6 +456,10 @@ impl Board {
             self.piece[mechs.rook_disappears.index()] = Empty;
             self.update_hash_piece::<S>(Rook, mechs.rook_appears);
             self.update_hash_piece::<S>(Rook, mechs.rook_disappears);
+            if EVAL {
+                self.rm_eval::<S>(Rook, mechs.rook_disappears);
+                self.add_eval::<S>(Rook, mechs.rook_appears);
+            }
         }   
 
         self.occupied = self.color_bb[0] | self.color_bb[1];
@@ -513,6 +535,10 @@ impl Board {
         self.halfmoves = undo_info.halfmove_clock;
         self.hash = undo_info.hash;
         self.turn = self.turn.opposite();
+        self.eval_eg = undo_info.last_eg;
+        self.eval_mg = undo_info.last_mg;
+        self.game_phase = undo_info.last_phase;
+        
     }
 
   

@@ -32,12 +32,13 @@ pub struct UndoInfo {
     pub captured_piece: Piece,
     pub last_mg: i16,
     pub last_eg: i16,
+    pub last_phase: i16,
 }
 
 impl UndoInfo {
     
     pub fn empty() -> Self {
-        Self { castling_rights: 0, en_passant_square: EMPTY_BB, halfmove_clock: 0, captured_piece: Empty, hash: 0, last_eg: 0, last_mg: 0}
+        Self { castling_rights: 0, en_passant_square: EMPTY_BB, halfmove_clock: 0, captured_piece: Empty, hash: 0, last_eg: 0, last_mg: 0, last_phase: 0}
     }
 }
 
@@ -145,9 +146,15 @@ impl Board {
             hash: 0,
             fullmove_counter: 1,
             positions: HashList::new(),
-            undo_stack: Box::new(UndoStack::new())
+            undo_stack: Box::new(UndoStack::new()),
+            eval_eg: 0,
+            eval_mg: 0,
+            game_phase: 0,
         };
         board.hash = board.calculate_hash();
+        board.game_phase = board.calc_phase();
+        board.eval_mg = board.calculate_mg();
+        board.eval_eg = board.calculate_eg();
         board
     }
 
@@ -271,11 +278,17 @@ impl Board {
             castling_rights,
             halfmoves: halfmoves_b,
             hash: 0,
+            eval_eg: 0,
+            eval_mg: 0,
+            game_phase: 0,
             fullmove_counter: fullmoves_b,
             positions: HashList::new(),
             undo_stack: Box::new(UndoStack::new())
         };
         board.hash = board.calculate_hash();
+        board.eval_eg = board.calculate_eg();
+        board.eval_mg = board.calculate_mg();
+        board.game_phase = board.calc_phase();
         Ok(board)
     }
 
@@ -284,10 +297,7 @@ impl Board {
         self.hash
     }
 
-    pub fn get_eval(&self) -> i32 {
-        self.count_material()
-    }
-
+   
     #[inline(always)]
     pub fn get_turn(&self) -> Color {
         self.turn
@@ -506,26 +516,7 @@ impl Board {
         }
     }
 
-    #[inline(always)]
-    pub fn result(&self) -> i32 {
-        match self.turn {
-            White => {
-                if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
-                    return -3_000_000;
-                }
-                0
-            }
-            Black => {
-                if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
-                    return -3_000_000;
-                }
-                0
-            }
-            _ => {
-                panic!()
-            }
-        }
-    }
+    
 
     pub fn qualify_move(&self, m: &str) -> Result<Move, Box<dyn Error>> {
         match self.turn {
@@ -702,9 +693,9 @@ mod test {
 
         let mut board = Board::default();
 
-        board.make_pl_move(m1);
-        board.make_pl_move(m2);
-        board.make_pl_move(m3);
+        board.make_pl_move::<false>(m1);
+        board.make_pl_move::<false>(m2);
+        board.make_pl_move::<false>(m3);
 
         assert_eq!(
             board.count_material(),
@@ -712,7 +703,7 @@ mod test {
             "Black lost a pawn and should evaluate to -1.0"
         );
 
-        board.make_pl_move(m4);
+        board.make_pl_move::<false>(m4);
         assert_eq!(
             board.count_material(),
             1,
@@ -730,10 +721,10 @@ mod test {
 
         let mut board = Board::default();
 
-        board.make_pl_move(m1);
-        board.make_pl_move(m2);
-        board.make_pl_move(m3);
-        board.make_pl_move(m4);
+        board.make_pl_move::<false>(m1);
+        board.make_pl_move::<false>(m2);
+        board.make_pl_move::<false>(m3);
+        board.make_pl_move::<false>(m4);
 
         assert_eq!(
             board.count_material(),
@@ -741,7 +732,7 @@ mod test {
             "White lost its queen should be -9.0"
         );
 
-        board.make_pl_move(m5);
+        board.make_pl_move::<false>(m5);
         assert_eq!(
             board.count_material(),
             9,
@@ -773,7 +764,7 @@ mod test {
         let mut board = Board::default();
         let inital_game = board.clone();
         let m = Move::from_string("e2e3", &board).unwrap();
-        assert!(board.make_pl_move(m));
+        assert!(board.make_pl_move::<false>(m));
         board.unmake_pl_move(m);
         compare_games(&board, &inital_game);
     }
@@ -784,13 +775,13 @@ mod test {
     fn make_unmake_capture() {
         let mut board = Board::default();
         let m = Move::from_string("e2e3", &board).unwrap();
-        assert!(board.make_pl_move(m));
+        assert!(board.make_pl_move::<false>(m));
         let m1 = Move::from_string("b7b5", &board).unwrap();
-        assert!(board.make_pl_move(m1));
+        assert!(board.make_pl_move::<false>(m1));
         let m2 = Move::from_string("f1b5", &board).unwrap();
 
         let inital_game = board.clone();
-        assert!(board.make_pl_move(m2));
+        assert!(board.make_pl_move::<false>(m2));
         board.unmake_pl_move(m2);
       
     
@@ -804,7 +795,7 @@ mod test {
         let mut board = Board::default();
         let m = Move::from_string("e2e4", &board).unwrap();
         let inital_game = board.clone();
-        assert!(board.make_pl_move(m));
+        assert!(board.make_pl_move::<false>(m));
         board.unmake_pl_move(m);
     
         compare_games(&board, &inital_game);
@@ -815,7 +806,7 @@ mod test {
         let mut board = Board::default();
         let m = Move::from_string("d2d4", &board).unwrap();
         let inital_game = board.clone();
-        assert!(board.make_pl_move(m));
+        assert!(board.make_pl_move::<false>(m));
         board.unmake_pl_move(m);
     
         compare_games(&board, &inital_game);
@@ -826,7 +817,7 @@ mod test {
         let mut board = Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3").unwrap();
         let mut initial_game = board.clone();
         let en_passant = Move::from_string("d4c3", &board).unwrap();
-        assert!(board.make_pl_move(en_passant));
+        assert!(board.make_pl_move::<false>(en_passant));
         board.unmake_pl_move(en_passant);
 
         compare_games(&board, &initial_game);
@@ -839,7 +830,7 @@ mod test {
         let mut board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
         let mut initial_game = board.clone();
         let castle = Move::from_string("e1g1", &board).unwrap();
-        assert!(board.make_pl_move(castle));
+        assert!(board.make_pl_move::<false>(castle));
         board.unmake_pl_move(castle);
     
         compare_games(&board, &initial_game);
@@ -852,7 +843,7 @@ mod test {
         let mut board = Board::from_fen("5k2/4P3/5K2/8/8/8/8/8 w - - 0 1").unwrap();
         let initial_game = board.clone();
         let promotion = Move::from_string("e7e8q", &board).unwrap();
-        assert!(board.make_pl_move(promotion));
+        assert!(board.make_pl_move::<false>(promotion));
     
         board.unmake_pl_move(promotion);
        
@@ -866,7 +857,7 @@ mod test {
         let mut board = Board::from_fen("3n1k2/4P3/5K2/8/8/8/8/8 w - - 0 1").unwrap();
         let initial_game = board.clone();
         let promotion = Move::from_string("e7d8q", &board).unwrap();
-        assert!(board.make_pl_move(promotion));
+        assert!(board.make_pl_move::<false>(promotion));
       
         board.unmake_pl_move(promotion);
        
@@ -880,15 +871,15 @@ mod test {
         let mut board = Board::default();
         let mut game_state_1 = board.clone();
         let m1= Move::from_string("e2e3", &board).unwrap();
-        assert!(board.make_pl_move(m1));
+        assert!(board.make_pl_move::<false>(m1));
 
         let game_state_2 = board.clone();
         let m2 =  Move::from_string("e7e6", &board).unwrap();
-        assert!(board.make_pl_move(m2));
+        assert!(board.make_pl_move::<false>(m2));
 
         let game_state_3 = board.clone();
         let m3 =  Move::from_string("g1f3", &board).unwrap();
-        assert!(board.make_pl_move(m3));
+        assert!(board.make_pl_move::<false>(m3));
 
         board.unmake_pl_move(m3);
         compare_games(&board, &game_state_3);

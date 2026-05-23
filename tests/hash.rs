@@ -9,7 +9,7 @@ fn test_1_move_deep(board: &mut Board, fen: &str, parent_move: Move) {
         .as_slice()
         .iter()
         .for_each(|&m| {
-            if board.make_pl_move(m) {
+            if board.make_pl_move::<false>(m) {
                 assert_eq!(
                     board.get_hash(),
                     board.calculate_hash(),
@@ -35,7 +35,7 @@ fn test_hash_vs_calculated() {
             .iter()
             .enumerate()
             .for_each(|(i, &m)| {
-                if board.make_pl_move(m) {
+                if board.make_pl_move::<false>(m) {
                     assert_eq!(
                         board.get_hash(),
                         board.calculate_hash(),

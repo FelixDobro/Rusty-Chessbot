@@ -6,7 +6,7 @@ use criterion::{Criterion, criterion_group};
 
 
 fn make_unmake(board: &mut Board, m: Move) {
-    board.make_pl_move(m);
+    board.make_pl_move::<true>(m);
     board.unmake_pl_move(m);
 }
 
@@ -49,9 +49,9 @@ fn capture_make_unmake(c: &mut Criterion) {
             init_lazylocks();            
             let mut board = Board::default();
             let m = Move::from_string("e2e3", &board).unwrap();
-            assert!(board.make_pl_move(m));
+            assert!(board.make_pl_move::<true>(m));
             let m1 = Move::from_string("b7b5", &board).unwrap();
-            assert!(board.make_pl_move(m1));
+            assert!(board.make_pl_move::<true>(m1));
             let m2 = Move::from_string("f1b5", &board).unwrap();
 
             (board, m2)

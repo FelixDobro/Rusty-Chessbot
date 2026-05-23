@@ -26,7 +26,7 @@ fn perft(game: &mut Board, depth: u8) -> usize {
     .map(|&m| 
     {
         let mut game_cloned = game.clone();
-        if game_cloned.make_pl_move(m) {
+        if game_cloned.make_pl_move::<false>(m) {
             let nodes = perft_single(&mut game_cloned, depth - 1);
             return nodes 
         }
@@ -50,7 +50,7 @@ fn perft_single(game: &mut Board, depth: u8) -> usize {
     let moves = game.generate_pseudolegals();
 
     for &m in moves.as_slice() {
-        if game.make_pl_move(m) {
+        if game.make_pl_move::<false>(m) {
             total_nodes += perft_single(game, depth - 1);
             game.unmake_pl_move(m);
         }

@@ -75,7 +75,7 @@ impl UCIManager
                                         while let Some(token) = tokens.next() {
                                             let m = Move::from_string(token, &self.board)?;
                                           
-                                            self.board.make_pl_move(m);
+                                            self.board.make_pl_move::<true>(m);
                                             
                                         }
                                     }

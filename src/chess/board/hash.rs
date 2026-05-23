@@ -6,6 +6,62 @@ use crate::chess::board::*;
 use super::Piece;
 
 use super::Board;
+
+
+impl Board {
+
+    pub fn calculate_hash(&self) -> u64 {
+
+        let mut super_hash = 0u64;
+        self.piece_bb
+        .into_iter()
+        .enumerate()
+        .for_each(|(piece_index, mut bb)| {
+            while bb != EMPTY {
+                let square = bb.lsb().usize();
+                super_hash ^=  ZOBRIST_TABLE.pieces[piece_index][square];
+                bb.pop_lsb();
+            }
+            
+        });
+        
+        super_hash ^= ZOBRIST_TABLE.castling[self.castling_rights as usize];
+        if self.en_passant != EMPTY {
+            super_hash ^= ZOBRIST_TABLE.en_passant[self.en_passant.lsb().file() as usize];
+        }
+        
+        super_hash ^= ZOBRIST_TABLE.side_to_move * self.turn.index() as u64;
+
+        super_hash
+    }
+
+    #[inline(always)]
+    pub fn update_hash_piece<S: Side>(&mut self, p: Piece, square: Square) {
+        self.hash ^= ZOBRIST_TABLE.pieces[p.index() + S::OFFSET][square.usize()]
+    }
+
+    #[inline(always)]
+    pub fn update_hash_caslte(&mut self, castling: u8) {
+        self.hash ^=  ZOBRIST_TABLE.castling[castling as usize];
+    }
+
+    #[inline(always)]
+    pub fn update_move_hash(&mut self) {
+        self.hash ^=  ZOBRIST_TABLE.side_to_move;
+    }
+
+
+    #[inline(always)]
+    pub fn update_en_passant_hash(&mut self) {
+        if self.en_passant != EMPTY{
+            self.hash ^=  ZOBRIST_TABLE.en_passant[self.en_passant.lsb().file() as usize];
+        }
+    }
+}
+
+
+
+
 struct JenkinsRng {
     a: u64,
     b: u64,
@@ -141,58 +197,4 @@ impl<const N: usize> HashList<N> {
 }
 
 pub const ZOBRIST_TABLE: ZobristTable = ZobristTable::new();
-
-impl Board {
-
-    pub fn calculate_hash(&self) -> u64 {
-
-        let mut super_hash = 0u64;
-        self.piece_bb
-        .into_iter()
-        .enumerate()
-        .for_each(|(piece_index, mut bb)| {
-            while bb != EMPTY {
-                let square = bb.lsb().usize();
-                super_hash ^=  ZOBRIST_TABLE.pieces[piece_index][square];
-                bb.pop_lsb();
-            }
-            
-        });
-        
-        super_hash ^= ZOBRIST_TABLE.castling[self.castling_rights as usize];
-        if self.en_passant != EMPTY {
-            super_hash ^= ZOBRIST_TABLE.en_passant[self.en_passant.lsb().file() as usize];
-        }
-        
-        super_hash ^= ZOBRIST_TABLE.side_to_move * self.turn.index() as u64;
-
-        super_hash
-    }
-
-    #[inline(always)]
-    pub fn update_hash_piece<S: Side>(&mut self, p: Piece, square: Square) {
-        self.hash ^= ZOBRIST_TABLE.pieces[p.index() + S::OFFSET][square.usize()]
-    }
-
-    #[inline(always)]
-    pub fn update_hash_caslte(&mut self, castling: u8) {
-        self.hash ^=  ZOBRIST_TABLE.castling[castling as usize];
-    }
-
-    #[inline(always)]
-    pub fn update_move_hash(&mut self) {
-        self.hash ^=  ZOBRIST_TABLE.side_to_move;
-    }
-
-
-    #[inline(always)]
-    pub fn update_en_passant_hash(&mut self) {
-        if self.en_passant != EMPTY{
-            self.hash ^=  ZOBRIST_TABLE.en_passant[self.en_passant.lsb().file() as usize];
-        }
-    }
-}
-
-
-
 
