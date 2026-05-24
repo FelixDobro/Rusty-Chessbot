@@ -319,6 +319,21 @@ impl Board {
     }
 
     #[inline(always)]
+    pub fn get_mg(&self) -> i16 {
+        self.eval_mg
+    }
+
+    #[inline(always)]
+    pub fn get_eg(&self) -> i16 {
+        self.eval_eg
+    }
+
+    #[inline(always)]
+    pub fn get_phase(&self) -> i16 {
+        self.game_phase
+    }
+
+    #[inline(always)]
     pub fn get_castling_rights(&self) -> u8 {
         self.castling_rights
     }

@@ -360,6 +360,21 @@ impl Board {
     }
 
 
+    // Only for testing, not recommendet!!!
+    #[inline(always)]
+    pub fn make_pl_move_from_string<const EVAL: bool>(&mut self, m: &str) -> Move {
+        let m_new = Move::from_string(m, self).unwrap();
+        
+        match self.turn {
+            Color::White => self.make_pseudolegal_move::<WhiteSide, EVAL>(m_new),
+            Color::Black => self.make_pseudolegal_move::<BlackSide, EVAL>(m_new),
+            _ => panic!("No ones turn"),
+        };
+        return m_new
+    }
+
+
+
 
     fn make_pseudolegal_move<S: Side, const EVAL: bool>(&mut self, m: Move) -> bool {
         let (from, to, from_board, to_board) = m.split();
@@ -404,7 +419,7 @@ impl Board {
             self.castling_rights &= !CASTLING_RIGHTS[to.usize()];
             if EVAL {
                 self.rm_eval::<S::OPPOSITE>(piece_captured, to);
-                self.rm_p_eval::<S>(piece_captured);
+                self.rm_p_eval::<S::OPPOSITE>(piece_captured);
             }
             self.game_phase -= PHASE_VALUES[piece_captured.index()];
         }
@@ -448,7 +463,8 @@ impl Board {
             self.update_hash_piece::<S::OPPOSITE>(Pawn, ep_square);
             self.halfmoves = 0;
             if EVAL {
-                self.rm_eval::<S>(Pawn, ep_square);
+                self.rm_eval::<S::OPPOSITE>(Pawn, ep_square);
+                self.rm_p_eval::<S::OPPOSITE>(Pawn);
             }
         }
         else if m.is_castle() {

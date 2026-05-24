@@ -115,6 +115,11 @@ impl Square {
     }
 
     #[inline(always)]
+    pub const fn flip(self) -> Square {
+        Self::from_u8(self.0 ^ 56) 
+    }
+
+    #[inline(always)]
     pub const fn index(self) -> usize {
         self.0 as usize
     }

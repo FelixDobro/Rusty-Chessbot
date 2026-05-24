@@ -98,6 +98,7 @@ impl Board {
 
     #[inline(always)]
     pub fn rm_p_eval<S: Side>(&mut self, p: Piece) {
+        
         self.eval_mg -= MG_VALUE[p.index() + S::OFFSET];
         self.eval_eg -= EG_VALUE[p.index() + S::OFFSET];
     }
@@ -197,9 +198,14 @@ pub static EG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
     let mut table = Box::new([[0i16; 64]; 12]);
 
     table[Pawn.index() + BlackSide::OFFSET] = [
-        0, 0, 0, 0, 0, 0, 0, 0, 178, 173, 158, 134, 147, 132, 165, 187, 94, 100, 85, 67, 56, 53,
-        82, 84, 32, 24, 13, 5, -2, 4, 17, 17, 13, 9, -3, -7, -7, -8, 3, -1, 4, 7, -6, 1, 0, -5, -1,
-        -8, 13, 8, 8, 10, 13, 0, 2, -7, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,   0,   0,   0,   0,   0,   0,   0,
+        178, 173, 158, 134, 147, 132, 165, 187,
+        94, 100,  85,  67,  56,  53,  82,  84,
+        32,  24,  13,   5,  -2,   4,  17,  17,
+        13,   9,  -3,  -7,  -7,  -8,   3,  -1,
+        4,   7,  -6,   1,   0,  -5,  -1,  -8,
+        13,   8,   8,  10,  13,   0,   2,  -7,
+        0,   0,   0,   0,   0,   0,   0,   0,
     ];
 
     table[Bishop.index() + BlackSide::OFFSET] = [
@@ -251,7 +257,9 @@ pub const EG_VALUE: [i16; 12]= [94, 281, 297, 512,  936,  0, -94, -281, -297, -5
 
 #[cfg(test)]
 mod test {
-    use crate::chess::{board::Board, chess_move::Move};
+    use crate::chess::{board::{Board, evaluation::{EG, EG_VALUE, MG}}, chess_move::Move, constants::{Color, Piece, Side}, square::Square};
+    use crate::chess::constants::Piece::{*};
+    use crate::chess::constants::{BlackSide, WhiteSide};
 
     fn compare_evals(initial_board: &Board, new_board: &Board) {
         assert_eq!(initial_board.eval_mg, new_board.eval_mg, "Mg does not match");
@@ -259,8 +267,66 @@ mod test {
         assert_eq!(initial_board.game_phase, new_board.game_phase, "Game phase does not match");
     }
 
+    fn compare_table<S: Side>(p: Piece, s: Square, val: i16, mg: bool) {
+        if mg {
+            assert_eq!(
+                MG[p.index() + S::OFFSET][s.index()],
+                val,
+                "Value at {:?} of {:?} in mg should be {} for {:?}", s, p, val, if S::INDEX == 0 {Color::White} else {Color::Black}
+            )
+        }
+        else {
+            assert_eq!(
+                EG[p.index() + S::OFFSET][s.index()],
+                val,
+                "Value at {:?} of {:?} in eg should be {} for {:?}", s, p, val, if S::INDEX == 0 {Color::White} else {Color::Black}
+            )
+        }
+        
+    }
+
     #[test]
-    pub fn make_unmake_quiet() {
+    fn test_mg_g6_white() {
+        compare_table::<WhiteSide>(Pawn, Square::G6,25, true);
+        compare_table::<WhiteSide>(Knight, Square::G6,73,true);
+        compare_table::<WhiteSide>(Bishop, Square::G6,37, true);
+        compare_table::<WhiteSide>(Rook, Square::G6,61, true);
+        compare_table::<WhiteSide>(Queen, Square::G6, 47, true);
+        compare_table::<WhiteSide>(King, Square::G6,22, true);
+    }
+
+    #[test]
+    fn test_mg_g6_black() {
+        compare_table::<BlackSide>(Pawn, Square::G6.flip(),25, true);
+        compare_table::<BlackSide>(Knight, Square::G6.flip(),73,true);
+        compare_table::<BlackSide>(Bishop, Square::G6.flip(),37, true);
+        compare_table::<BlackSide>(Rook, Square::G6.flip(),61, true);
+        compare_table::<BlackSide>(Queen, Square::G6.flip(), 47, true);
+        compare_table::<BlackSide>(King, Square::G6.flip(),22, true);
+    }
+
+    #[test]
+    fn test_eg_g6_white() {
+        compare_table::<WhiteSide>(Pawn, Square::G6,82, false);
+        compare_table::<WhiteSide>(Knight, Square::G6,-19,false);
+        compare_table::<WhiteSide>(Bishop, Square::G6,0, false);
+        compare_table::<WhiteSide>(Rook, Square::G6,-5, false);
+        compare_table::<WhiteSide>(Queen, Square::G6, 19, false);
+        compare_table::<WhiteSide>(King, Square::G6,44, false);
+    }
+
+    #[test]
+    fn test_eg_g6_black() {
+        compare_table::<BlackSide>(Pawn, Square::G6.flip(),82, false);
+        compare_table::<BlackSide>(Knight, Square::G6.flip(),-19,false);
+        compare_table::<BlackSide>(Bishop, Square::G6.flip(),0, false);
+        compare_table::<BlackSide>(Rook, Square::G6.flip(),-5, false);
+        compare_table::<BlackSide>(Queen, Square::G6.flip(), 19, false);
+        compare_table::<BlackSide>(King, Square::G6.flip(),44, false);
+    }
+
+    #[test]
+    fn make_unmake_quiet() {
         let mut board = Board::default();
         let initial_board = board.clone();
         let m = Move::from_string("e2e3", &board).unwrap();
@@ -270,7 +336,7 @@ mod test {
     }
 
     #[test]
-    pub fn make_unmake_double() {
+    fn make_unmake_double() {
         let mut board = Board::default();
         let initial_board = board.clone();
         let m = Move::from_string("e2e4", &board).unwrap();
@@ -370,8 +436,62 @@ mod test {
         compare_evals(&board, &game_state_1);
     }
 
+    #[test]
+    fn test_eval_0() {
+        let mut board = Board::default();
+        let initial_mg = board.get_mg();
+        let initial_eg = board.get_eg();
+        board.make_pl_move_from_string::<true>("e2e3");
+        assert_eq!(board.get_mg(), initial_mg + (18));
+        assert_eq!(board.get_eg(), initial_eg + (-13));
+        let mut mg_last = board.get_mg();
+        let mut eg_last = board.get_eg();
+        board.make_pl_move_from_string::<true>("e7e5");
+        assert_eq!(board.get_mg(), mg_last - (32));
+        assert_eq!(board.get_eg(), eg_last - (-20));
+    }
 
-    pub fn test_eval() {}
+    #[test]
+    fn test_eval_1() {
+        let mut board = Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3").unwrap();
+        let initial_mg = board.get_mg();
+        let initial_eg = board.get_eg();
+        println!("{}", initial_eg);
+        board.make_pl_move_from_string::<true>("d4c3");
+        assert_eq!(board.get_mg(), initial_mg - (-6 + 82) - 6);
+        assert_eq!(board.get_eg(), initial_eg - (80 + 94) + 3);
+    }
+
+    #[test]
+    fn test_eval_white_loses_queen() {
+        let m1 = Move::new(Square::E2, Square::E4, Move::DOUBLE_PAWN);
+        let m2 = Move::new(Square::G8, Square::F6, Move::QUIET);
+        let m3 = Move::new(Square::D1, Square::G4, Move::QUIET);
+        let m4 = Move::new(Square::F6, Square::G4, Move::CAPTURE);
+        let m5 = Move::new(Square::A2, Square::A3, Move::QUIET);
+
+        let mut board = Board::default();
+        let mut initial_mg = board.get_mg();
+        let mut initial_eg = board.get_eg();
+        board.make_pl_move::<true>(m1);
+        assert_eq!(board.get_mg(), initial_mg + 32);
+        assert_eq!(board.get_eg(), initial_eg + (-20));
+        initial_mg = board.get_mg();
+        initial_eg = board.get_eg();
+        board.make_pl_move::<true>(m2);
+        assert_eq!(board.get_mg(), initial_mg - 36);
+        assert_eq!(board.get_eg(), initial_eg - 47);
+        initial_mg = board.get_mg();
+        initial_eg = board.get_eg();
+        board.make_pl_move::<true>(m3);
+        assert_eq!(board.get_mg(), initial_mg + (-7));
+        assert_eq!(board.get_eg(), initial_eg + (82));
+        initial_mg = board.get_mg();
+        initial_eg = board.get_eg();
+        board.make_pl_move::<true>(m4);
+        assert_eq!(board.get_mg(), initial_mg - (1 + 1025 + 3));
+        assert_eq!(board.get_eg(), initial_eg - (11 + 936 + 39));
+    }
 
 
 }
