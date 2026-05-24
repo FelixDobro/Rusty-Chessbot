@@ -190,7 +190,8 @@ impl<const N: usize> HashList<N> {
     } 
 
     pub fn print(&self) {
-        for m in self.positions {
+        
+        for m in self.half_move_iter(self.count as u64) {
             println!("{}", m)
         }
     }

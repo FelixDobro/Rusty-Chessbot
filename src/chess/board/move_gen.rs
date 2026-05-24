@@ -485,6 +485,7 @@ impl Board {
         self.turn = self.turn.opposite();
         self.update_move_hash();
         self.update_hash_caslte(self.castling_rights);
+        self.positions.push(self.hash);
         if self.sq_attacked_by::<S::OPPOSITE>(self.get_king_square::<S>()) {
             self.unmake_pl_move_p::<S>(m, &undo_info);
             return false;
@@ -557,7 +558,7 @@ impl Board {
         self.eval_eg = undo_info.last_eg;
         self.eval_mg = undo_info.last_mg;
         self.game_phase = undo_info.last_phase;
-        
+        self.positions.pop();
     }
 
   

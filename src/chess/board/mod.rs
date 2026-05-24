@@ -674,7 +674,7 @@ impl Board {
                 num_occurences += 1
             }
         }
-
+        println!("num_occurences: {}", num_occurences);
         num_occurences > 2
     }
 
@@ -902,6 +902,41 @@ mod test {
         compare_games(&board, &game_state_2);
         board.unmake_pl_move(m1);
         compare_games(&board, &game_state_1);
+    }
+
+    #[test]
+    fn make_draw() {
+        let mut board = Board::default();
+        board.make_pl_move_from_string::<true>("g1f3");
+        board.make_pl_move_from_string::<true>("g8f6");
+        board.make_pl_move_from_string::<true>("f3g1");
+        board.make_pl_move_from_string::<true>("f6g8");
+        assert_eq!(
+            board.can_claim_draw(),
+            false,
+            "Should not be draw"
+        );
+        board.make_pl_move_from_string::<true>("g1f3");
+        board.make_pl_move_from_string::<true>("g8f6");
+        board.make_pl_move_from_string::<true>("f3g1");
+        board.make_pl_move_from_string::<true>("f6g8");
+        assert_eq!(
+            board.can_claim_draw(),
+            false,
+            "Should not be draw"
+        );
+
+        board.make_pl_move_from_string::<true>("g1f3");
+        board.make_pl_move_from_string::<true>("g8f6");
+        board.make_pl_move_from_string::<true>("f3g1");
+        board.make_pl_move_from_string::<true>("f6g8");
+        println!("here");
+        board.positions.print();
+        assert_eq!(
+            board.can_claim_draw(),
+            true,
+            "Should be draw"
+        );
     }
 
 }
