@@ -66,16 +66,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // let mut search = Negamax{};
     // let mut mangager = UCIManager::new(Box::new(search));
     // mangager.start_protocol();
-    
-    let mut board = Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3").unwrap();
-    let initial_mg = board.get_mg();
-    let initial_eg = board.get_eg();
-    println!("{}", initial_eg);
-    board.make_pl_move_from_string::<true>("d4c3");
-    assert_eq!(board.get_mg(), initial_mg - (-6 + 82) - 6);
-    assert_eq!(board.get_eg(), initial_eg - (80 + 94) - 3);
-
-
+    let fen = "4r3/8/8/8/8/8/8/4K3 w - - 0 1";
+    let mut board = Board::from_fen(fen).unwrap();
+    board.print();
     // board.get_board().print();
     // board.make_pl_move::<true>(Move::from_string("h7h6", &board).unwrap());
     

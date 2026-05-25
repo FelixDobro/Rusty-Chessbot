@@ -456,7 +456,6 @@ mod test {
         let mut board = Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3").unwrap();
         let initial_mg = board.get_mg();
         let initial_eg = board.get_eg();
-        println!("{}", initial_eg);
         board.make_pl_move_from_string::<true>("d4c3");
         assert_eq!(board.get_mg(), initial_mg - (-6 + 82) - 6);
         assert_eq!(board.get_eg(), initial_eg - (80 + 94) + 3);
