@@ -78,9 +78,12 @@ impl Board {
     }
 
     pub fn eval(&self) -> i16 {
-        let mask = -(self.turn.index() as i16); 
-        let eval = (self.game_phase * self.eval_mg + (24 - self.game_phase) * self.eval_eg) / 24;
-        (eval ^ mask) - mask
+        let mask = -(self.turn.index() as i32); 
+        let game_phase_i32 = self.game_phase as i32;
+        let mg_i32 = self.eval_mg as i32;
+        let eg_i32 = self.eval_mg as i32;
+        let eval = (game_phase_i32 * mg_i32 + (24 - game_phase_i32) * eg_i32) / 24;
+        ((eval ^ mask) - mask) as i16
     }
 
 

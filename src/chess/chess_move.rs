@@ -8,7 +8,7 @@ pub const MOVE_GEN_SIZE: usize = 256;
 pub const GAME_MOVES_SIZE: usize = 1024;
 
 
-
+pub const NULL_MOVE: Move = Move::new(Square::A1, Square::A1, 0);
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 #[repr(transparent)]
@@ -35,7 +35,7 @@ impl Move {
     pub const PROMO_CAP_QUEEN: u16 = 15;
 
     #[inline(always)]
-    pub fn new(from: Square, to: Square, flags: u16) -> Self {
+    pub const fn new(from: Square, to: Square, flags: u16) -> Self {
         let from_u = from.u16();
         let to_u = to.u16();
         debug_assert!(from_u < 64 && to_u < 64);

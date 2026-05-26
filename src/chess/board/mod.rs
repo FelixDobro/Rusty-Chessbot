@@ -511,19 +511,19 @@ impl Board {
         return self.get_piece(square) as usize;
     }
 
-    pub fn count_material(&self) -> i32 {
-        let mut result = 0i32;
-        result += self.piece_bb[Pawn.index()].count_ones() as i32;
-        result += self.piece_bb[Bishop.index()].count_ones() as i32 * 3;
-        result += self.piece_bb[Knight.index()].count_ones() as i32 * 3;
-        result += self.piece_bb[Rook.index()].count_ones() as i32 * 5;
-        result += self.piece_bb[Queen.index()].count_ones() as i32 * 9;
+    pub fn count_material(&self) -> i16 {
+        let mut result = 0i16;
+        result += self.piece_bb[Pawn.index()].count_ones() as i16;
+        result += self.piece_bb[Bishop.index()].count_ones() as i16 * 3;
+        result += self.piece_bb[Knight.index()].count_ones() as i16 * 3;
+        result += self.piece_bb[Rook.index()].count_ones() as i16 * 5;
+        result += self.piece_bb[Queen.index()].count_ones() as i16 * 9;
 
-        result -= self.piece_bb[Pawn.index() + Black.offset()].count_ones() as i32;
-        result -= self.piece_bb[Bishop.index() + Black.offset()].count_ones() as i32 * 3;
-        result -= self.piece_bb[Knight.index() + Black.offset()].count_ones() as i32 * 3;
-        result -= self.piece_bb[Rook.index() + Black.offset()].count_ones() as i32 * 5;
-        result -= self.piece_bb[Queen.index() + Black.offset()].count_ones() as i32 * 9;
+        result -= self.piece_bb[Pawn.index() + Black.offset()].count_ones() as i16;
+        result -= self.piece_bb[Bishop.index() + Black.offset()].count_ones() as i16 * 3;
+        result -= self.piece_bb[Knight.index() + Black.offset()].count_ones() as i16 * 3;
+        result -= self.piece_bb[Rook.index() + Black.offset()].count_ones() as i16 * 5;
+        result -= self.piece_bb[Queen.index() + Black.offset()].count_ones() as i16 * 9;
 
         match self.turn {
             White => result,
