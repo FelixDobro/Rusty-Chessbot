@@ -160,6 +160,14 @@ impl<const N: usize> MoveList<N> {
         self.count -= 1;
     }
 
+    #[inline(always)]
+    pub fn pop_get(&mut self) ->  Option<Move> {
+        if self.count == 0 {return None;}
+        self.count -= 1;
+        let item = self.moves[self.count];
+        Some(item)
+    }
+
     pub fn as_slice(&self) -> &[Move] {
         &self.moves[0..self.count]
     }

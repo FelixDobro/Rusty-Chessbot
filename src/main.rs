@@ -13,7 +13,7 @@ use crate::chess::chess_move::{*};
 use crate::chess::square::Square;
 use crate::chess::constants::{*};
 use crate::chess::board::hash::{*};
-use crate::move_sorting::{NoSorting, NumericSorting};
+use crate::move_sorting::{NumericSorting};
 use crate::search::SearchAlgorithm;
 use crate::uci::UCIManager;
 use crate::chess::board::bitboard;

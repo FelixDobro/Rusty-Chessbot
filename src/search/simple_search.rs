@@ -1,7 +1,7 @@
 
 use crate::chess::board::{Board};
 use crate::chess::chess_move::NULL_MOVE;
-use crate::move_sorting::{NumericSorting};
+use crate::move_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::{Ntype, SearchAlgorithm, SearchResult, TTable, TTableEntry};
 
 const INFINITY: i16 = 10000;
@@ -91,7 +91,8 @@ impl SearchAlgorithm for Negamax {
 
 pub struct NegamaxTT {
     ttable: TTable,
-    age: u8
+    age: u8,
+
 }
 
 impl NegamaxTT {
@@ -109,7 +110,8 @@ impl NegamaxTT {
 
     let mut best_move = NULL_MOVE;
     let mut num_moves = 0;
-    for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
+    let mut sorter = AdvancedSorting::new(None);
+    while let Some(m) = sorter.next(board) {
         if board.make_pl_move::<true>(m) {
             num_moves += 1;
             let value = - self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha);
@@ -141,7 +143,7 @@ impl NegamaxTT {
         mut alpha: i16,
         beta: i16,
     ) -> i16 {
-
+        let mut move_iter = AdvancedSorting::new(None);
         if let Some(entry) = self.ttable.get(board.get_hash()) {
             if entry.depth >= depth {
                 match entry.ntype {
@@ -158,6 +160,7 @@ impl NegamaxTT {
                     },
                 };
             }
+            move_iter.set_hash_m(entry.best_move);
         }
 
         if depth == 0 {
@@ -170,7 +173,7 @@ impl NegamaxTT {
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
         let mut num_moves = 0;
-        for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
+        while let Some(m) = move_iter.next(board) {
             if board.make_pl_move::<true>(m) {
                 num_moves += 1;
                 let new_eval = - self.negamax_p(board, depth - 1, -beta, -alpha);

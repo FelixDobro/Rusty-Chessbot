@@ -19,26 +19,26 @@ fn negamax_should_find_same_as_tt() {
     let mut depth = 2;
     let first_result = simple_search.search(&mut board, depth);
     let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result, second_result, "With TTable does not find the same as without TTable for depth: {}", depth);
+    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth);
 
     let mut depth = 3;
     let first_result = simple_search.search(&mut board, depth);
     let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result, second_result, "With TTable does not find the same as without TTable for depth: {}", depth);
+    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth);
 
     let mut depth = 4;
     let first_result = simple_search.search(&mut board, depth);
     let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result, second_result, "With TTable does not find the same as without TTable for depth: {}", depth);
+    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth);
 
     let mut depth = 5;
     let first_result = simple_search.search(&mut board, depth);
     let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result, second_result, "With TTable does not find the same as without TTable for depth: {}", depth);
+    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth);
 
     let mut depth = 6;
     let first_result = simple_search.search(&mut board, depth);
     let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result, second_result, "With TTable does not find the same as without TTable for depth: {}", depth);
+    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth);
 
 }
