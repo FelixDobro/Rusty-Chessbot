@@ -42,3 +42,13 @@ fn negamax_should_find_same_as_tt() {
     assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth);
 
 }
+
+#[test]
+fn can_find_move() {
+    let mut search = NegamaxTT::new(1000);
+    let mut board = Board::from_fen("8/1R3k2/2p5/2K1Q3/8/8/8/7q b - - 54 76").unwrap();
+    let search_result =search.search(&mut board, 6);
+
+    assert!(search_result.is_some(), "Does not find move, even though move possible");
+    
+}

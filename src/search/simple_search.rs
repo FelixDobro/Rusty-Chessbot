@@ -3,9 +3,7 @@ use crate::chess::board::{Board};
 use crate::chess::chess_move::NULL_MOVE;
 use crate::move_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::{Ntype, SearchAlgorithm, SearchResult, TTable, TTableEntry};
-
-const INFINITY: i16 = 10000;
-const NEG_INFINITY: i16 = -10000;
+use crate::chess::board::evaluation::{NEG_INFINITY, CHECK_MATE, POSITIVE_INFINITY};
 
 
 pub struct Negamax;
@@ -115,6 +113,7 @@ impl NegamaxTT {
         if board.make_pl_move::<true>(m) {
             num_moves += 1;
             let value = - self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha);
+            println!("{}", value);
             board.unmake_pl_move(m);
             if value > best_val {
                 best_move = m;
@@ -123,7 +122,7 @@ impl NegamaxTT {
             }
         }
     }
-    self.age.wrapping_add(1);
+    self.age += self.age.wrapping_add(1);
 
     if best_move != NULL_MOVE {
         return Some(
