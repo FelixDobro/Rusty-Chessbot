@@ -15,6 +15,7 @@ use crate::chess::constants::{*};
 use crate::chess::board::hash::{*};
 use crate::move_sorting::{NumericSorting};
 use crate::search::SearchAlgorithm;
+use crate::search::ids::IDSearch;
 use crate::uci::UCIManager;
 use crate::chess::board::bitboard;
 use crate::search::simple_search::{NegamaxTT};
@@ -61,8 +62,8 @@ fn perft(board: &mut Board, depth: u8, move_list: &mut MoveList<256>) -> usize {
 
 fn main() -> Result<(), Box<dyn Error>> {
     
-
-    let mut search = NegamaxTT::new(2u64.pow(22) as usize);
+    let mut negamax = NegamaxTT::new(2u64.pow(22) as usize);
+    let mut search = IDSearch::new(negamax);
     let mut mangager = UCIManager::new(Box::new(search));
     mangager.start_protocol();
    

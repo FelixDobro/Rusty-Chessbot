@@ -1,11 +1,13 @@
 
+use crate::search::SearchLimits;
+
 use crate::chess::board::Board;
 use crate::chess::chess_move::Move;
 use crate::search::SearchAlgorithm;
 
 use std::{
     error::Error,
-    io::{Stdin,stdin},
+    io::{Stdin,stdin}, time::Duration,
 };
 
 
@@ -88,26 +90,76 @@ impl UCIManager
                             }
                             _ => {}
                         };
-                    }
-
+                    },
                     "go" => {
-                        let depth_token = tokens.next();
-                        let mut search_depth = 6;
-                        match depth_token {
-                            Some("depth") => {
-                                let next_token = tokens.next();
-                                search_depth = next_token.as_deref().and_then(|i| i.parse::<u8>().ok()).unwrap();
-                            },
-                            _ => {},
+                    
+                        let mut search_depth = None;
+                        let mut wtime = None;
+                        let mut btime = None;
+                        let mut winc = None;
+                        let mut binc = None;
+                
+                        while let Some(param) = tokens.next() {
+                            match param {
+                                "depth" => {
+                                    if let Some(val) = tokens.next() {
+                                        search_depth = val.parse::<u8>().ok();
+                                    }
+                                }
+                                "wtime" => {
+                                    if let Some(val) = tokens.next() {
+                                        wtime = val.parse::<u64>().ok();
+                                    }
+                                }
+                                "btime" => {
+                                    if let Some(val) = tokens.next() {
+                                        btime = val.parse::<u64>().ok();
+                                    }
+                                }
+                                "winc" => {
+                                    if let Some(val) = tokens.next() {
+                                        winc = val.parse::<u64>().ok();
+                                    }
+                                }
+                                "binc" => {
+                                    if let Some(val) = tokens.next() {
+                                        binc = val.parse::<u64>().ok();
+                                    }
+                                }
+                                _ => {} 
+                            }
+                        }
+                        let limit = if let Some(d) = search_depth {
+                            SearchLimits::depth(d) 
+                        } else {
+                            
+                            let remaining_time_ms = if self.board.get_turn().is_white() {
+                                wtime.unwrap_or(5000) 
+                            } else {
+                                btime.unwrap_or(5000)
+                            };
+
+                            let increment = if self.board.get_turn().is_white() {
+                                winc.unwrap_or(5000) 
+                            } else {
+                                binc.unwrap_or(5000)
+                            };
+
+                            // Simples Time Management: Nimm 1/40 der Restzeit für diesen Zug
+                            let move_time_budget = (remaining_time_ms / 20) + (increment / 2); 
+                            
+                            SearchLimits {
+                                max_depth: None,
+                                max_time: Some(Duration::from_millis(move_time_budget)),
+                                max_nodes: None,
+                                infinite: false,
+                            }
                         };
 
-                        if let Some(res) = self
-                            .search
-                            .search(&mut self.board, search_depth)
-                        {
+                        if let Some(res) = self.search.search(&mut self.board, &limit) {
                             println!("bestmove {}", res.best_move.to_string());
                         }
-                    }
+                    },
                     _ => {}
                 };
             }

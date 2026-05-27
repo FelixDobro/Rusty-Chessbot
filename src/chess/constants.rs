@@ -174,6 +174,11 @@ impl Color {
         unsafe { std::mem::transmute((self as usize ^ 1) as u8) }
     }
 
+    #[inline(always)]
+    pub fn is_white(self) -> bool {
+        return self == Self::White
+    }
+
 
 }
 
