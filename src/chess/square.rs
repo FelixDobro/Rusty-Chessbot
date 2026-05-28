@@ -79,6 +79,8 @@ impl Square {
     pub const G8: Square = Square(62);
     pub const H8: Square = Square(63);
 
+    pub const UNDEFINED: Square = Square(64);
+
     #[inline(always)]
     pub const fn from_u8(value: u8) -> Self {
         Square(value)

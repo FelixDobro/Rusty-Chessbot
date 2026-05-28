@@ -8,6 +8,7 @@ use bitboard::EMPTY as EMPTY_BB;
 use bitboard::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
+use std::collections::btree_map::Entry::Occupied;
 use std::error::Error;
 use std::{default, str};
 
@@ -458,45 +459,136 @@ impl Board {
         DIAG_LINES_MAGIC[sq.usize()][index as usize]
     }
 
+    pub fn diag_lines_occupied(&self, sq: Square, occupied: Bitboard) -> Bitboard {
+        let mask = DIAGONAL_LINES[sq.usize()];
+        let index = unsafe { _pext_u64(occupied.u64(), mask.u64())};
+        DIAG_LINES_MAGIC[sq.usize()][index as usize]
+    }
+
     pub fn straight_lines_w_bound(&self, sq: Square) -> Bitboard {
         let mask = STRAIGHT_LINES[sq.usize()];
         let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
         STRAIGHT_LINES_MAGIC[sq.usize()][index as usize]
     }
 
-
-    pub fn get_attack_mask(&self, sq: Square) -> Bitboard {
-        match self.turn {
-            Color::White => self.get_attack_mask_p::<WhiteSide>(sq),
-            Color::Black => self.get_attack_mask_p::<BlackSide>(sq),
-            _ => panic!("No ones turn?")
-        }
+    pub fn straight_lines_occupied(&self, sq: Square, occupied: Bitboard) -> Bitboard {
+        let mask = STRAIGHT_LINES[sq.usize()];
+        let index = unsafe { _pext_u64(occupied.u64(), mask.u64()) };
+        STRAIGHT_LINES_MAGIC[sq.usize()][index as usize]
     }
+
 
     #[inline(always)]
-    fn get_attack_mask_p<S: Side>(&self, sq: Square) -> Bitboard {
+    pub fn attack_mask(&self, sq: Square) -> Bitboard {
         let mut attack_mask = EMPTY_BB;
 
-        let pawns = self.piece_bb[S::OFFSET + Pawn.index()];
-        attack_mask |= PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & pawns;
+        let black_pawns = self.piece_bb[Pawn.index() + BlackSide::OFFSET];
+        attack_mask |= PAWN_ATTACKS[WhiteSide::INDEX][sq.index()] & black_pawns;
+        let white_pawns = self.piece_bb[Pawn.index() + WhiteSide::OFFSET];
+        attack_mask |= PAWN_ATTACKS[BlackSide::INDEX][sq.index()] & white_pawns;
 
-        let knights = self.piece_bb[S::OFFSET + Knight.index()];
+        let knights = self.piece_bb[Knight.index()] | self.piece_bb[BlackSide::OFFSET + Knight.index()];
         attack_mask |= KNIGHT_PATTERNS[sq.usize()] & knights;
 
-        let king = self.piece_bb[S::OFFSET + King.index()];
+        let king = self.piece_bb[King.index()] | self.piece_bb[BlackSide::OFFSET + King.index()];
         attack_mask |= KING_PATTERNS[sq.usize()] & king;
 
-        let bishop_queen = self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Bishop.index()];
+        let bishop_queen = 
+        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
+        self.piece_bb[WhiteSide::OFFSET + Bishop.index()] |
+        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
+        self.piece_bb[BlackSide::OFFSET + Bishop.index()];
+
         attack_mask |= self.diag_lines_w_bound(sq) & bishop_queen;
 
-        let rook_queens = self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Rook.index()];
+        let rook_queens = 
+        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
+        self.piece_bb[WhiteSide::OFFSET + Rook.index()] |
+        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
+        self.piece_bb[BlackSide::OFFSET + Rook.index()];
         attack_mask |= self.straight_lines_w_bound(sq) & rook_queens;
+
         attack_mask
+
     }
 
+    pub fn get_lva<S: Side>(&self, attack_mask: Bitboard) -> Square {
+        
+        let pawn_board = self.piece_bb[S::OFFSET + Pawn.index()];
+        let mut pawn_attackers = pawn_board & attack_mask;
+        if  pawn_attackers != EMPTY_BB {
+            while pawn_attackers.count_ones() > 1 {
+                pawn_attackers.pop_lsb();
+            }
+            return pawn_attackers.lsb();
+        }
 
+        let knight_board = self.piece_bb[S::OFFSET + Knight.index()];
+        let mut knight_attackers = knight_board & attack_mask;
+        if knight_attackers != EMPTY_BB {
+            while knight_attackers.count_ones() > 1 {
+                knight_attackers.pop_lsb();
+            }
+            return knight_attackers.lsb();
+        }
 
+        let bishop_board = self.piece_bb[S::OFFSET + Bishop.index()];
+        let mut bishop_attackers = bishop_board & attack_mask;
+        if bishop_attackers & attack_mask != EMPTY_BB {
+            while bishop_attackers.count_ones() > 1 {
+                bishop_attackers.pop_lsb();
+            }
+            return bishop_attackers.lsb();
+        }
 
+        let rook_board = self.piece_bb[S::OFFSET + Rook.index()];
+        let mut rook_attackers = rook_board & attack_mask;
+        if rook_attackers & attack_mask != EMPTY_BB {
+            while rook_attackers.count_ones() > 1 {
+                rook_attackers.pop_lsb();
+            }
+            return rook_attackers.lsb();
+        }
+
+        let queen_board = self.piece_bb[S::OFFSET + Queen.index()];
+        let mut queen_attackers = queen_board & attack_mask;
+        if queen_attackers & attack_mask != EMPTY_BB {
+            while queen_attackers.count_ones() > 1 {
+                queen_attackers.pop_lsb();
+            }
+            return queen_attackers.lsb();
+        }
+
+        let king_board = self.piece_bb[S::OFFSET + King.index()];
+        let mut king_attackers = king_board & attack_mask;
+        if king_attackers & attack_mask != EMPTY_BB {
+            while king_attackers.count_ones() > 1 {
+                king_attackers.pop_lsb();
+            }
+            return king_attackers.lsb();
+        }
+     
+        EMPTY_BB.lsb()
+    }
+
+    pub fn update_attack_board<S: Side>(&self, sq: Square, mut attack_mask: Bitboard, occupied: Bitboard, dont_include: Bitboard) -> Bitboard {
+        
+        let bishop_queen = 
+        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
+        self.piece_bb[WhiteSide::OFFSET + Bishop.index()] |
+        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
+        self.piece_bb[BlackSide::OFFSET + Bishop.index()];
+        attack_mask |= self.diag_lines_occupied(sq, occupied) & bishop_queen &! dont_include;
+
+        let rook_queens = 
+        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
+        self.piece_bb[WhiteSide::OFFSET + Rook.index()] |
+        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
+        self.piece_bb[BlackSide::OFFSET + Rook.index()];
+        attack_mask |= self.straight_lines_occupied(sq, occupied) & rook_queens &! dont_include;
+
+        attack_mask
+    }
 
     pub fn sq_attacked_by<S: Side>(&self, sq: Square) -> bool {
         let attacker_pawns = self.piece_bb[S::OFFSET + Pawn.index()];
@@ -721,8 +813,12 @@ impl Board {
 #[cfg(test)]
 mod test {
 
-    use crate::chess::chess_move::Move;
-    use crate::chess::square::Square;
+    use std::collections::btree_map::Entry::Occupied;
+
+use crate::chess::board::bitboard::{Bitboard, EMPTY};
+use crate::chess::chess_move::Move;
+    use crate::chess::constants::{Side, WhiteSide};
+use crate::chess::square::Square;
     use crate::chess::board::Board;
 
 
@@ -974,5 +1070,79 @@ mod test {
             "Should be draw"
         );
     }
+
+    #[test]
+    fn attack_mask_defautl_empty() {
+        let board = Board::default();
+        let attack_mask = board.attack_mask(Square::C4);
+        assert_eq!(attack_mask, EMPTY, "C4 should not be attacked in default position");
+    }
+
+    #[test]
+    fn attack_mask_defautl_non_empty() {
+        let board = Board::default();
+        let attack_mask = board.attack_mask(Square::C3);
+        let expected_mask = Bitboard::from_squares(vec![Square::B1, Square::B2, Square::D2]);
+
+        assert_eq!(attack_mask, expected_mask, "C3 should be attacked by pawns and knight in default position");
+    }
+
+    #[test]
+    fn attack_mask_queen() {
+        let mut board = Board::default();
+        board.make_pl_move_from_string::<false>("e2e4");
+       
+        let attack_mask = board.attack_mask(Square::F3);
+        let expected_mask = Bitboard::from_squares(vec![Square::G1, Square::G2, Square::D1]);
+
+        assert_eq!(attack_mask, expected_mask, "Attack mask is not correct");
+    }
+
+
+    #[test]
+    fn lva_default() {
+        let board = Board::default();
+        let attack_mask = board.attack_mask(Square::C3);
+        let attacker = board.get_lva::<WhiteSide>(attack_mask);
+        assert_eq!(attacker, Square::D2, "Wrong LVA");
+    }
+
+    #[test]
+    fn test_attack_mask_diag() {
+        let board = Board::from_fen("rnb1kb1r/pppp1ppp/4n3/4p1q1/4P3/8/PPPQ1PPP/RNB1KBNR w KQkq - 0 1").unwrap();
+        let attacked_square =  Square::G5;
+        let attack_mask = board.attack_mask(attacked_square);
+        let attacker = board.get_lva::<WhiteSide>(attack_mask);
+        assert_eq!(attacker, Square::D2, "Wrong LVA");
+        let mut occupied = board.occupied;
+
+        let new_attack_mask = attack_mask ^ attacker.to_bitboard();
+        occupied ^= attacker.to_bitboard();
+        let updatet_attack_mask = board.update_attack_board::<WhiteSide>(attacked_square, new_attack_mask, occupied, EMPTY);
+        
+        let next_attacker = board.get_lva::<WhiteSide>(updatet_attack_mask);
+        assert_eq!(next_attacker, Square::C1, "Bishop xraid attack square, but it wasnt noticed!");
+
+    }
+
+    #[test]
+    fn test_attack_mask_straight() {
+        let board = Board::from_fen("3k4/3r4/3q4/8/3Q4/8/3R4/3K4 w - - 0 1").unwrap();
+        let attacked_square =  Square::D5;
+        let attack_mask = board.attack_mask(attacked_square);
+
+        let attacker = board.get_lva::<WhiteSide>(attack_mask);
+        assert_eq!(attacker, Square::D4, "Wrong LVA");
+        let mut occupied = board.occupied;
+
+        let new_attack_mask = attack_mask ^ attacker.to_bitboard();
+        occupied ^= attacker.to_bitboard();
+        let updatet_attack_mask = board.update_attack_board::<WhiteSide>(attacked_square, new_attack_mask, occupied, EMPTY);
+        
+        let next_attacker = board.get_lva::<WhiteSide>(updatet_attack_mask);
+        assert_eq!(next_attacker, Square::D2, "Bishop xraid attack square, but it wasnt noticed!");
+
+    }
+    
 
 }

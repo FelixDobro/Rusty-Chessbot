@@ -22,6 +22,18 @@ impl Bitboard {
     }
 
     #[inline(always)]
+    pub fn from_squares(squares: Vec<Square>) -> Self {
+        let mut board = EMPTY;
+        squares
+        .iter()
+        .for_each(|&sq| board |= Self::with_one_bit(sq));
+        board
+    }
+
+
+
+
+    #[inline(always)]
     pub const fn u64(self) -> u64 {
         self.0
     }
