@@ -10,7 +10,7 @@ use crate::chess::board::bitboard::{*};
 pub const NUM_PIECES: usize = 6;
 pub const NUM_COLORS: usize = 2;
 
-pub const SYMBOLS: [char; 12] = ['♟', '♝', '♞', '♜', '♛', '♚', '♙', '♗', '♘', '♖', '♕', '♔'];
+pub const SYMBOLS: [char; 12] = ['♟', '♞', '♝', '♜', '♛', '♚', '♙', '♘', '♗', '♖', '♕', '♔'];
 
 
 
@@ -127,8 +127,8 @@ pub const CASTLING_TABLE: [[CastlingMechanics; 2]; 2] =
 #[repr(u8)]
 pub enum Piece {
     Pawn = 0,
-    Bishop = 1,
-    Knight = 2,
+    Knight = 1,
+    Bishop = 2,
     Rook = 3,
     Queen = 4,
     King = 5,

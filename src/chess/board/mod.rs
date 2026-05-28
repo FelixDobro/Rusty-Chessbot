@@ -113,14 +113,14 @@ impl Board {
         let mut board = Board {
             piece_bb: [
                 PAWN_W_DEFAULT,
-                BISHOP_W_DEFAULT,
                 KNIGHT_W_DEFAULT,
+                BISHOP_W_DEFAULT,
                 ROOK_W_DEFAULT,
                 QUEEN_W_DEFAULT,
                 KING_W_DEFAULT,
                 PAWN_B_DEFAULT,
-                BISHOP_B_DEFAULT,
                 KNIGHT_B_DEFAULT,
+                BISHOP_B_DEFAULT,
                 ROOK_B_DEFAULT,
                 QUEEN_B_DEFAULT,
                 KING_B_DEFAULT,
@@ -464,6 +464,40 @@ impl Board {
         STRAIGHT_LINES_MAGIC[sq.usize()][index as usize]
     }
 
+
+    pub fn get_attack_mask(&self, sq: Square) -> Bitboard {
+        match self.turn {
+            Color::White => self.get_attack_mask_p::<WhiteSide>(sq),
+            Color::Black => self.get_attack_mask_p::<BlackSide>(sq),
+            _ => panic!("No ones turn?")
+        }
+    }
+
+    #[inline(always)]
+    fn get_attack_mask_p<S: Side>(&self, sq: Square) -> Bitboard {
+        let mut attack_mask = EMPTY_BB;
+
+        let pawns = self.piece_bb[S::OFFSET + Pawn.index()];
+        attack_mask |= PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & pawns;
+
+        let knights = self.piece_bb[S::OFFSET + Knight.index()];
+        attack_mask |= KNIGHT_PATTERNS[sq.usize()] & knights;
+
+        let king = self.piece_bb[S::OFFSET + King.index()];
+        attack_mask |= KING_PATTERNS[sq.usize()] & king;
+
+        let bishop_queen = self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Bishop.index()];
+        attack_mask |= self.diag_lines_w_bound(sq) & bishop_queen;
+
+        let rook_queens = self.piece_bb[S::OFFSET + Queen.index()] | self.piece_bb[S::OFFSET + Rook.index()];
+        attack_mask |= self.straight_lines_w_bound(sq) & rook_queens;
+        attack_mask
+    }
+
+
+
+
+
     pub fn sq_attacked_by<S: Side>(&self, sq: Square) -> bool {
         let attacker_pawns = self.piece_bb[S::OFFSET + Pawn.index()];
         if (PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & attacker_pawns) > EMPTY_BB {
@@ -510,6 +544,8 @@ impl Board {
     pub fn get_piece_usize(&self, square: Square) -> usize {
         return self.get_piece(square) as usize;
     }
+
+
 
     pub fn count_material(&self) -> i16 {
         let mut result = 0i16;

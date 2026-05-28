@@ -27,7 +27,7 @@ pub struct AdvancedSorting {
 
 impl AdvancedSorting {
     const HASH_M_VAL: i16 = 1000;
-    const PIECE_VALS: [i16; 7] = [1,3,2,4,5,6,0];
+    const PIECE_VALS: [i16; 7] = [1,2,3,4,5,6,0];
     const MAX_PIECE_VAL: i16 = 6;
 
     pub fn new(hash_move: Option<Move>) -> Self {
