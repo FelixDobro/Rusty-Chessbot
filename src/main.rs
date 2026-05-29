@@ -19,7 +19,8 @@ use crate::search::ids::IDSearch;
 use crate::uci::UCIManager;
 use crate::chess::board::bitboard;
 use crate::search::simple_search::{NegamaxTT};
-use chess_bot::chess::board::bitboard::EMPTY;
+use crate::chess::board::bitboard::EMPTY;
+use crate::search::simple_search::Negamax;
 use rayon::prelude::*;
 
 
@@ -63,13 +64,12 @@ fn perft(board: &mut Board, depth: u8, move_list: &mut MoveList<256>) -> usize {
 
 fn main() -> Result<(), Box<dyn Error>> {
     
-    // let mut negamax = NegamaxTT::new(2u64.pow(22) as usize);
-    // let mut search = IDSearch::new(negamax);
-    // let mut mangager = UCIManager::new(Box::new(search));
-    // mangager.start_protocol();
-    
-    let s = EMPTY.lsb();
-    println!("{:?}", s);
+    let mut negamax = NegamaxTT::new(2u64.pow(23) as usize);
+    let mut search = IDSearch::new(negamax);
+    // let mut search = Negamax::new();
+    let mut mangager = UCIManager::new(Box::new(search));
+    mangager.start_protocol()?;
+
     // board.get_board().print();
     // board.make_pl_move::<true>(Move::from_string("h7h6", &board).unwrap());
     

@@ -1,34 +1,28 @@
-
-use crate::chess::board::{Board};
+use crate::chess::board::Board;
+use crate::chess::board::evaluation::{CHECK_MATE, NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::NULL_MOVE;
 use crate::move_sorting::{AdvancedSorting, NumericSorting};
+use crate::search::Ntype::Exact;
 use crate::search::{Ntype, SearchAlgorithm, SearchLimits, SearchResult, TTable, TTableEntry};
-use crate::chess::board::evaluation::{NEG_INFINITY, CHECK_MATE, POSITIVE_INFINITY};
-
 
 pub struct Negamax {
-    nodes_searched: u64
+    nodes_searched: u64,
 }
 
-   
-
 impl Negamax {
-
     pub fn new() -> Self {
-        return Self { nodes_searched: 0 }
+        return Self { nodes_searched: 0 };
     }
-
 
     pub fn negamax(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult> {
         self.nodes_searched = 0;
         let mut best_val = NEG_INFINITY;
         let mut alpha = NEG_INFINITY;
-        let mut best_move= None;
-
+        let mut best_move = None;
 
         for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
             if board.make_pl_move::<true>(m) {
-                let value = - self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha);
+                let value = -self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha);
                 board.unmake_pl_move(m);
                 if value > best_val {
                     best_move = Some(m);
@@ -38,41 +32,33 @@ impl Negamax {
             }
         }
         if let Some(m) = best_move {
-            return Some(
-                SearchResult {
-                    best_move: m,
-                    evaluation: best_val,
-                    nodes_searched: self.nodes_searched
-                }
-            )
+            return Some(SearchResult {
+                best_move: m,
+                evaluation: best_val,
+                nodes_searched: self.nodes_searched,
+                depth: depth,
+            });
         }
         None
-}
+    }
 
-    fn negamax_p(
-        &mut self,
-        board: &mut Board,
-        depth: u8,
-        mut alpha: i16,
-        beta: i16,
-    ) -> i16 {
+    fn negamax_p(&mut self, board: &mut Board, depth: u8, mut alpha: i16, beta: i16) -> i16 {
         self.nodes_searched += 1;
 
         if depth == 0 {
             return board.eval();
-        }  
-        if board.can_claim_draw() {
-            return 0
         }
-    
+        if board.can_claim_draw() {
+            return 0;
+        }
 
         let mut num_moves_found = 0;
         for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
             if board.make_pl_move::<true>(m) {
                 num_moves_found += 1;
-                let new_eval = - self.negamax_p(board, depth - 1, -beta, -alpha);
+                let new_eval = -self.negamax_p(board, depth - 1, -beta, -alpha);
                 board.unmake_pl_move(m);
-                if new_eval >= beta{
+                if new_eval >= beta {
                     return beta;
                 }
                 if new_eval > alpha {
@@ -81,14 +67,12 @@ impl Negamax {
             }
         }
         if num_moves_found == 0 {
-            let res=  board.result();
-            return res
+            let res = board.result();
+            return res;
         }
+
         alpha
     }
-
-    
-
 }
 
 impl SearchAlgorithm for Negamax {
@@ -97,87 +81,129 @@ impl SearchAlgorithm for Negamax {
     }
 }
 
-
 pub struct NegamaxTT {
     ttable: TTable,
     age: u8,
-    nodes_searched: u64
+    nodes_searched: u64,
 }
 
 impl NegamaxTT {
-
     pub fn new(ttsize: usize) -> Self {
-        Self { ttable: TTable::new(ttsize), age: 0, nodes_searched: 0}
-
+        Self {
+            ttable: TTable::new(ttsize),
+            age: 0,
+            nodes_searched: 0,
+        }
     }
 
     pub fn negamax(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult> {
-    self.nodes_searched = 0;
-    let mut best_val = NEG_INFINITY;
-    let mut alpha = NEG_INFINITY;
+        self.nodes_searched = 0;
+        let mut best_val = NEG_INFINITY;
+        let mut alpha = NEG_INFINITY;
 
-    let mut best_move = NULL_MOVE;
+        let mut tt_move = None;
+        if let Some(entry) = self.ttable.get(board.get_hash()) {
+            tt_move = Some(entry.best_move);
+        }
 
-    let mut sorter = AdvancedSorting::new(None);
-    while let Some(m) = sorter.next(board) {
-        if board.make_pl_move::<true>(m) {
-            let value = - self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha);
+        let mut sorter = AdvancedSorting::new(tt_move);
+        let mut ntype = Ntype::Upper;
+        let mut best_move = NULL_MOVE;
+        while let Some(m) = sorter.next(board) {
+            if board.make_pl_move::<true>(m) {
+                let value = -self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha);
 
-            board.unmake_pl_move(m);
-            if value > best_val {
-                best_move = m;
-                best_val = value;
-                alpha = best_val;
+                board.unmake_pl_move(m);
+                if value > best_val {
+                    best_move = m;
+                    best_val = value;
+                    alpha = best_val;
+                }
             }
         }
-    }
-    self.age += self.age.wrapping_add(1);
 
-    if best_move != NULL_MOVE {
-        return Some(
-            SearchResult {
+        if self.nodes_searched == 0 {
+            let res = board.result();
+            self.ttable.insert(TTableEntry {
+                hash: board.get_hash(),
+                best_move: if best_move != NULL_MOVE {
+                    best_move
+                } else {
+                    if tt_move.is_some() {
+                        tt_move.unwrap()
+                    } else {
+                        NULL_MOVE
+                    }
+                },
+                depth: depth,
+                score: res,
+                ntype: Exact,
+                age: self.age,
+            });
+            return None;
+        }
+
+        self.ttable.insert(TTableEntry {
+            hash: board.get_hash(),
+            best_move: if best_move != NULL_MOVE {
+                best_move
+            } else {
+                if tt_move.is_some() {
+                    tt_move.unwrap()
+                } else {
+                    NULL_MOVE
+                }
+            },
+            depth: depth,
+            score: alpha,
+            ntype: ntype,
+            age: self.age,
+        });
+
+        self.age = self.age.wrapping_add(1);
+
+        if best_move != NULL_MOVE {
+            return Some(SearchResult {
                 best_move: best_move,
                 evaluation: best_val,
-                nodes_searched: self.nodes_searched
-            }
-        )
+                nodes_searched: self.nodes_searched,
+                depth: depth,
+            });
+        }
+        None
     }
-    None
-}
 
-    fn negamax_p(
-        &mut self,
-        board: &mut Board,
-        depth: u8,
-        mut alpha: i16,
-        beta: i16,
-    ) -> i16 {
+    fn negamax_p(&mut self, board: &mut Board, depth: u8, mut alpha: i16, beta: i16) -> i16 {
         self.nodes_searched += 1;
         let mut move_iter = AdvancedSorting::new(None);
+        let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
             if entry.depth >= depth {
                 match entry.ntype {
-                    Ntype::Exact => {return entry.score;},
+                    Ntype::Exact => {
+                        return entry.score;
+                    }
                     Ntype::Lower => {
                         if beta <= entry.score {
                             return entry.score;
                         }
-                    },
+                    }
                     Ntype::Upper => {
                         if alpha >= entry.score {
                             return entry.score;
                         }
-                    },
+                    }
                 };
             }
+            tt_move = entry.best_move;
             move_iter.set_hash_m(entry.best_move);
         }
 
         if depth == 0 {
             return board.eval();
-        }  
+        }
         if board.can_claim_draw() {
-            return 0
+            return 0;
         }
 
         let mut ntype = Ntype::Upper;
@@ -186,15 +212,15 @@ impl NegamaxTT {
         while let Some(m) = move_iter.next(board) {
             if board.make_pl_move::<true>(m) {
                 num_moves += 1;
-                let new_eval = - self.negamax_p(board, depth - 1, -beta, -alpha);
+                let new_eval = -self.negamax_p(board, depth - 1, -beta, -alpha);
                 board.unmake_pl_move(m);
-                if new_eval >= beta{
+                if new_eval >= beta {
                     self.ttable.insert(TTableEntry {
                         hash: board.get_hash(),
-                        best_move: m,     
-                        score: beta,       
+                        best_move: m,
+                        score: beta,
                         depth: depth,
-                        ntype: Ntype::Lower, 
+                        ntype: Ntype::Lower,
                         age: self.age,
                     });
                     return beta;
@@ -208,21 +234,34 @@ impl NegamaxTT {
         }
 
         if num_moves == 0 {
-            let res=  board.result();
-            return res
+            let res = board.result();
+            self.ttable.insert(TTableEntry {
+                hash: board.get_hash(),
+                best_move: if best_move != NULL_MOVE {
+                    best_move
+                } else {
+                    tt_move
+                },
+                depth: depth,
+                score: res,
+                ntype: Exact,
+                age: self.age,
+            });
+            return res;
         }
 
-    
-        self.ttable.insert(
-            TTableEntry {
+        self.ttable.insert(TTableEntry {
             hash: board.get_hash(),
-            best_move: best_move,
+            best_move: if best_move != NULL_MOVE {
+                best_move
+            } else {
+                tt_move
+            },
             depth: depth,
             score: alpha,
-            ntype:ntype,
-            age: self.age
-        }
-        );
+            ntype: ntype,
+            age: self.age,
+        });
         alpha
     }
 }

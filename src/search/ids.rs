@@ -34,7 +34,6 @@ impl<S: SearchAlgorithm> IDSearch<S> {
                 best_res = Some(result);
 
                 if total_elapsed + predicted_time > search_time {
-                    println!("depth reached: {}", current_depth);
                     break;
                 }
             }

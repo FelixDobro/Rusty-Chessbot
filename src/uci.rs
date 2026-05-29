@@ -157,6 +157,7 @@ impl UCIManager
                         };
 
                         if let Some(res) = self.search.search(&mut self.board, &limit) {
+                            res.print_info();
                             println!("bestmove {}", res.best_move.to_string());
                         }
                     },

@@ -1,6 +1,7 @@
 pub mod simple_search;
 pub mod ids;
 use crate::chess::board::Board;
+use crate::search::Ntype::Exact;
 use std::time::Duration;
 
 
@@ -40,7 +41,15 @@ impl SearchLimits {
 pub struct SearchResult {
     pub best_move: Move,
     pub evaluation: i16,
-    pub nodes_searched: u64
+    pub nodes_searched: u64,
+    pub depth: u8
+}
+
+impl SearchResult {
+
+    pub fn print_info(&self) {
+        println!("{}, eval: {}, depth: {}", self.best_move, self.evaluation, self.depth);
+    }
 }
 
 
@@ -50,14 +59,14 @@ pub trait SearchAlgorithm {
 
 
 #[repr(u8)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Ntype {
     Exact,
     Lower,
     Upper
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct TTableEntry {
     pub hash: u64,
     pub best_move: Move, //u16
@@ -79,10 +88,20 @@ impl TTableEntry {
             age: 0 
         }
     }
+    
+    fn debug_entry(hash: u64, depth: u8, age: u8) -> Self {
+        TTableEntry { hash,
+            best_move: NULL_MOVE,
+            depth: depth,
+            score: 0, 
+            ntype: Exact,
+            age 
+        }
+    }
 }
 
 #[repr(align(64))]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Bucket {
     entries: [TTableEntry; 4]
 }
@@ -137,6 +156,19 @@ impl Bucket {
         }
         None
     }
+
+    fn debug_print(&self) {
+        for i in 0..4 {
+            println!("Entry {}", i);
+            let entry = self.entries[i];
+            println!("Age: {}", entry.hash);
+            println!("Depth: {}", entry.depth);
+            println!("Age: {}", entry.age);
+            println!();
+        }
+
+    }
+
 }
 
 #[repr(align(64))]
@@ -162,5 +194,56 @@ impl TTable {
         self.table[index].get(hash)
     }
 
-    
+    pub fn get_bucket(&self, hash: u64) -> Bucket {
+        let index = hash as usize % self.size;
+        self.table[index]
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use crate::{chess::{board::Board, chess_move::Move}, search::{Ntype::Exact, TTable, TTableEntry}};
+
+    #[test]
+    fn insert_get() {
+        let mut table = TTable::new(1000);
+        let board = Board::default();
+        let entry = TTableEntry::debug_entry(board.get_hash(), 2, 2);
+        table.insert(entry);
+        let &recieved = table.get(board.get_hash()).unwrap();
+        assert_eq!(recieved, entry, "Insertet is not the same as recieved");
+    }
+
+    #[test]
+    fn bucket() {
+        let mut table = TTable::new(1);
+        let mut board = Board::default();
+        let bucket_hash= board.get_hash();
+        let best_move =Move::from_string("e2e4", &board).unwrap();
+
+        let entry = TTableEntry::debug_entry(bucket_hash, 10, 0);
+
+        table.insert(entry);
+        board.make_pl_move_from_string::<true>("e2e4");
+        table.insert(
+            TTableEntry::debug_entry(board.get_hash(), 8, 0)
+        );
+        board.make_pl_move_from_string::<true>("e7e5");
+        table.insert(
+            TTableEntry::debug_entry(board.get_hash(), 2, 7)
+        );
+        board.make_pl_move_from_string::<true>("g1f3");
+        table.insert(
+            TTableEntry::debug_entry(board.get_hash(), 9, 0)
+        );
+
+        board.make_pl_move_from_string::<true>("g8f6");
+        table.insert(
+            TTableEntry::debug_entry(board.get_hash(), 21, 7)
+        );
+
+        table.get_bucket(bucket_hash).debug_print();
+
+    }
 }

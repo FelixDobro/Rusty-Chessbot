@@ -374,6 +374,15 @@ impl Board {
     }
 
 
+    #[inline(always)]
+    pub fn make_pl_move_from_strings<const EVAL: bool>(&mut self, moves: &[&str])  {
+        for &m in moves {
+            let m_new = Move::from_string(m, self).unwrap();
+            self.make_pl_move::<EVAL>(m_new);
+        }
+
+    }
+
 
 
     fn make_pseudolegal_move<S: Side, const EVAL: bool>(&mut self, m: Move) -> bool {

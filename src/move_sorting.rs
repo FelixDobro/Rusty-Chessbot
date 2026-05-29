@@ -63,7 +63,7 @@ impl AdvancedSorting {
             let move_slice = moves.as_slice();
             for i in 0..len {
                 let m = move_slice[i];
-                let score = if self.tt_move.is_some_and(|tt_move| tt_move == m) { -2500 }
+                let score = if self.tt_move.is_some_and(|tt_move| tt_move == m) { - Self::HASH_M_VAL }
                 else { Self::eval_move(board, m) };
                 scored_moves[i] = (m, score);
             }

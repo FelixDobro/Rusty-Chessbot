@@ -1,6 +1,6 @@
-use std::os::unix::raw::dev_t;
 
-use chess_bot::{chess::{board::Board, chess_move::Move}, move_sorting::AdvancedSorting, search::{SearchAlgorithm, SearchLimits, simple_search::{Negamax, NegamaxTT}}};
+
+use chess_bot::{chess::{board::Board, chess_move::Move}, move_sorting::AdvancedSorting, search::{SearchAlgorithm, SearchLimits, ids::IDSearch, simple_search::{Negamax, NegamaxTT}}};
 
 
 #[test]
@@ -86,4 +86,25 @@ fn define_move_order_2() {
 
     assert_eq!(next_move, actual_next, "Not the right move order");
 
+}
+
+#[test]
+fn test_hash_table() {
+
+    let negamax = NegamaxTT::new(2u64.pow(18) as usize);
+    let mut search = IDSearch::new(negamax);
+    let mut board = Board::from_fen("r1b1kbnr/pp3ppp/2p5/1B1p2q1/4P3/2N2P2/PPn2KPP/6NR b kq - 1 11").unwrap();
+
+    search.search(&mut board, &SearchLimits::depth(5));
+    board.make_pl_move_from_string::<true>("g5e3");
+    search.search(&mut board, &SearchLimits::depth(4));
+    board.make_pl_move_from_string::<true>("f2f1");
+
+    
+    let first_search_res = search.search(&mut board, &SearchLimits::depth(5)).unwrap().best_move;
+    let second_search_res = search.search(&mut board, &SearchLimits::depth(4)).unwrap().best_move;
+    let mate_in_1 = Move::from_string("e3e1", &board).unwrap();
+
+    assert_eq!(first_search_res, mate_in_1, "first search oversaw mate in 1");
+    assert_eq!(second_search_res, mate_in_1, "second search oversaw mate in 1");
 }
