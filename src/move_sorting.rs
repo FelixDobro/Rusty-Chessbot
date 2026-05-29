@@ -27,9 +27,11 @@ impl NumericSorting {
 
 pub struct AdvancedSorting {
     tt_move: Option<Move>,
-    moves: MoveList<MOVE_GEN_SIZE>,
     generate_moves: bool,
-    hash_move: bool
+    hash_move: bool,
+    moves: [(Move, i16) ; MOVE_GEN_SIZE],
+    current: usize,
+    done: bool
 }
 
 impl AdvancedSorting {
@@ -38,34 +40,50 @@ impl AdvancedSorting {
     const MAX_PIECE_VAL: i16 = 6;
 
     pub fn new(hash_move: Option<Move>) -> Self {
-        Self { tt_move: hash_move, moves: MoveList::new(), generate_moves: true, hash_move: true}
+        Self { tt_move: hash_move, moves: [(NULL_MOVE, 0i16); MOVE_GEN_SIZE], generate_moves: true, hash_move: true, current: 0, done: false}
     }
 
     #[inline(always)]
     pub fn next(&mut self, board: &Board) -> Option<Move> {
 
         if self.hash_move {
-            if let Some(m) = self.tt_move {
+            if self.tt_move.is_some() {
                 self.hash_move = false;
                 return self.tt_move;
             }
             self.hash_move = false;
             return self.next(board);
         }
-        if self.generate_moves {
-            let mut moves = board.generate_pseudolegals();
-            moves.as_mut_slice()
-            .sort_unstable_by_key(|&movelist_m| {
-                if self.tt_move.is_some_and(|m| m == movelist_m)  {-1000}
-                else {
-                    Self::eval_move(board, movelist_m)
-                }
-            });
-            self.moves = moves;
+        else if self.generate_moves {
+
+            let moves = board.generate_pseudolegals();
+
+            let mut scored_moves: [(Move, i16); 256] = [(NULL_MOVE, 0); MOVE_GEN_SIZE];
+            let len = moves.size();
+            let move_slice = moves.as_slice();
+            for i in 0..len {
+                let m = move_slice[i];
+                let score = if self.tt_move.is_some_and(|tt_move| tt_move == m) { -2500 }
+                else { Self::eval_move(board, m) };
+                scored_moves[i] = (m, score);
+            }
+
             self.generate_moves = false;
+            let active_slice = &mut scored_moves[0..len];
+            active_slice.sort_unstable_by_key(|&(_, score)| score);
+            self.moves[0..len].copy_from_slice(active_slice);
+            self.current = len;
+            if len == 0 {self.done = true}
+        }
+        if self.current == 0 {
+            self.done = true
+        }
+        if self.done {
+            return None;
         }
 
-        self.moves.pop_get()
+        self.current -= 1;
+        Some(self.moves[self.current].0)
     }
 
     #[inline(always)]
@@ -114,7 +132,7 @@ impl AdvancedSorting {
             gain[index - 1] = i16::max(gain[index - 1], -gain[index]);
             index -= 1;
         }
-    
+
         return gain[0];
     }
 

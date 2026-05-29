@@ -1,6 +1,6 @@
 use std::os::unix::raw::dev_t;
 
-use chess_bot::{chess::board::Board, search::{SearchAlgorithm, SearchLimits, simple_search::{Negamax, NegamaxTT}}};
+use chess_bot::{chess::{board::Board, chess_move::Move}, move_sorting::AdvancedSorting, search::{SearchAlgorithm, SearchLimits, simple_search::{Negamax, NegamaxTT}}};
 
 
 #[test]
@@ -52,5 +52,38 @@ fn can_find_move() {
     let search_result = search.search(&mut board, &SearchLimits::depth(6));
 
     assert!(search_result.is_some(), "Does not find move, even though move possible");
-    
+}
+
+
+#[test]
+fn define_move_order() {
+    let mut search = NegamaxTT::new(10000);
+    let mut board = Board::from_fen("r1bqkbnr/ppp1pppp/2n5/3p4/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 0 1").unwrap();
+    let search_result = search.search(&mut board, &SearchLimits::depth(1)).unwrap();
+
+    let mut sorter = AdvancedSorting::new(Some(search_result.best_move));
+    assert_eq!(search_result.best_move, sorter.next(&board).unwrap(), "Not the right move order");
+
+    let next_move = Move::from_string("e4d5", &board).unwrap();
+    assert_eq!(next_move, sorter.next(&board).unwrap(), "Not the right move order");
+
+}
+
+
+#[test]
+fn define_move_order_2() {
+    let mut search = NegamaxTT::new(10000);
+    let mut board = Board::from_fen("r1b1kb1r/ppp2p1p/2n1p1q1/3p1PpQ/3PP3/8/PPP3PP/RNB1KBNR w KQkq - 0 1").unwrap();
+    let search_result = search.search(&mut board, &SearchLimits::depth(2)).unwrap();
+
+    let mut sorter = AdvancedSorting::new(Some(search_result.best_move));  
+    let first = sorter.next(&board).unwrap();
+
+    assert_eq!(search_result.best_move, first, "Not the right move order");
+
+    let next_move = Move::from_string("h5g6", &board).unwrap();
+    let actual_next = sorter.next(&board).unwrap();
+
+    assert_eq!(next_move, actual_next, "Not the right move order");
+
 }
