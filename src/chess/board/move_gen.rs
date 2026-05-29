@@ -648,3 +648,28 @@ impl Board {
         }
     }
 }
+
+
+#[cfg(test)]
+mod test {
+    use crate::chess::{board::Board, chess_move::Move};
+
+    
+    #[test]
+    fn default_captures() {
+        let board = Board::default();
+        let captures =board.generate_captures();
+        assert_eq!(captures.size(), 0, "Initial position does not have capture")
+    }
+
+    #[test]
+    fn capture_possible() {
+        let mut board = Board::default();
+        let m = Move::from_string("e2e3", &board).unwrap();
+        assert!(board.make_pl_move::<false>(m));
+        let m1 = Move::from_string("b7b5", &board).unwrap();
+        assert!(board.make_pl_move::<false>(m1));
+        let captures = board.generate_captures();
+        assert_eq!(captures.as_slice()[0], Move::from_string("f1b5",  &board).unwrap(), "Bishop should be able to capture pawn");
+    }
+}

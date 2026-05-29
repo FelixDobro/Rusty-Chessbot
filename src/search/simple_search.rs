@@ -96,9 +96,9 @@ impl NegamaxTT {
         }
     }
 
-    pub fn quiesence_search(&mut self, board: &mut Board, alpha: i16, beta: i16) -> i16 {
+    pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
 
-        let mut tt_move = None;
+        let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
             if entry.depth >= 0 {
                 match entry.ntype {
@@ -117,9 +117,38 @@ impl NegamaxTT {
                     }
                 };
             }
-            tt_move = Some(entry.best_move);
+            tt_move = entry.best_move;
         }
-        0
+
+        if board.can_claim_draw() {
+            return 0
+        }
+        
+        let stand_part = board.eval();
+
+        if stand_part >= beta {
+            return beta
+        }
+        if alpha < stand_part {
+            alpha = stand_part;
+        }
+
+        let mut num_moves_executed = 0;
+        for &m in board.generate_captures().as_slice() {
+            if board.make_pl_move::<true>(m) {
+                num_moves_executed += 1;
+                let score = - self.quiesence_search(board, -beta, -alpha);
+                board.unmake_pl_move(m);
+                if score >= beta { return beta; }
+                if score > alpha {alpha = score }
+            }
+        } 
+        
+        if num_moves_executed == 0 {
+            return board.result();
+        }
+        
+        alpha
     }
 
     pub fn negamax(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult> {
@@ -217,7 +246,7 @@ impl NegamaxTT {
         }
         
         if depth == 0 {
-            return board.eval();
+            return self.quiesence_search(board, alpha, beta);
         }
         
         if board.can_claim_draw() {

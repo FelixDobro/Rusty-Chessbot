@@ -48,7 +48,7 @@ pub struct SearchResult {
 impl SearchResult {
 
     pub fn print_info(&self) {
-        println!("{}, eval: {}, depth: {}", self.best_move, self.evaluation, self.depth);
+        println!("{}, eval: {}, depth: {}, nodes: {}", self.best_move, self.evaluation, self.depth, self.nodes_searched);
     }
 }
 
