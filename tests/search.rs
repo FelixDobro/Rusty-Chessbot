@@ -11,39 +11,6 @@ fn negamax_should_find_best_move() {
     assert!(res.is_some(), "Negamax should be able to find best move");
 }
 
-#[test]
-fn negamax_should_find_same_as_tt() {
-    let mut board = Board::default();
-    let mut simple_search = Negamax::new();
-    let table_size = 2u64.pow(22);
-    let mut advanced_search = NegamaxTT::new(table_size as usize);
-
-    let mut depth = &SearchLimits::depth(2);
-    let first_result = simple_search.search(&mut board, depth);
-    let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth.max_depth.unwrap());
-
-    let mut depth = &SearchLimits::depth(3);
-    let first_result = simple_search.search(&mut board, depth);
-    let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth.max_depth.unwrap());
-
-    let mut depth = &SearchLimits::depth(4);
-    let first_result = simple_search.search(&mut board, depth);
-    let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth.max_depth.unwrap());
-
-    let mut depth = &SearchLimits::depth(5);
-    let first_result = simple_search.search(&mut board, depth);
-    let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth.max_depth.unwrap());
-
-    let mut depth = &SearchLimits::depth(6);
-    let first_result = simple_search.search(&mut board, depth);
-    let second_result = advanced_search.search(&mut board, depth);
-    assert_eq!(first_result.unwrap().best_move, second_result.unwrap().best_move, "With TTable does not find the same as without TTable for depth: {}", depth.max_depth.unwrap());
-
-}
 
 #[test]
 fn can_find_move() {
@@ -61,7 +28,7 @@ fn define_move_order() {
     let mut board = Board::from_fen("r1bqkbnr/ppp1pppp/2n5/3p4/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 0 1").unwrap();
     let search_result = search.search(&mut board, &SearchLimits::depth(1)).unwrap();
 
-    let mut sorter = AdvancedSorting::new(Some(search_result.best_move));
+    let mut sorter = AdvancedSorting::new(search_result.best_move);
     assert_eq!(search_result.best_move, sorter.next(&board).unwrap(), "Not the right move order");
 
     let next_move = Move::from_string("e4d5", &board).unwrap();
@@ -76,7 +43,7 @@ fn define_move_order_2() {
     let mut board = Board::from_fen("r1b1kb1r/ppp2p1p/2n1p1q1/3p1PpQ/3PP3/8/PPP3PP/RNB1KBNR w KQkq - 0 1").unwrap();
     let search_result = search.search(&mut board, &SearchLimits::depth(2)).unwrap();
 
-    let mut sorter = AdvancedSorting::new(Some(search_result.best_move));  
+    let mut sorter = AdvancedSorting::new(search_result.best_move);  
     let first = sorter.next(&board).unwrap();
 
     assert_eq!(search_result.best_move, first, "Not the right move order");

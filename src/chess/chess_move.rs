@@ -1,6 +1,6 @@
 use core::fmt;
 use std::error::Error;
-
+use std::mem::MaybeUninit;
 use crate::chess::{board::{Board, bitboard::{self, Bitboard}}, square::Square};
 
 
@@ -136,7 +136,7 @@ impl fmt::Display for Move {
 
 #[derive(Debug, Clone)]
 pub struct MoveList<const N: usize> {
-    moves: [Move; N],
+    moves: MaybeUninit<[Move; N]>,
     count: usize,
 }
 
@@ -144,14 +144,19 @@ impl<const N: usize> MoveList<N> {
     
     pub fn new() -> Self {
         Self {
-            moves: [Move(0); N],
+            moves: MaybeUninit::uninit(),
             count: 0 
         }
     }
 
     #[inline(always)]
     pub fn push(&mut self, m: Move) {
-        self.moves[self.count] = m;
+        let array_ptr = self.moves.as_mut_ptr() as *mut Move;
+    
+        unsafe {
+            let target_ptr = array_ptr.add(self.count);
+            target_ptr.write(m);
+        }
         self.count += 1;
     } 
 
@@ -161,12 +166,20 @@ impl<const N: usize> MoveList<N> {
     }
 
 
+    #[inline(always)]
     pub fn as_slice(&self) -> &[Move] {
-        &self.moves[0..self.count]
+        unsafe {
+            let array_ptr = self.moves.as_ptr() as *const Move;
+            std::slice::from_raw_parts(array_ptr, self.count)
+        }
     }
 
+    #[inline(always)]
     pub fn as_mut_slice(&mut self) -> &mut [Move] {
-        self.moves[0..self.count].as_mut()
+        unsafe {
+            let array_ptr = self.moves.as_mut_ptr() as *mut Move;
+            std::slice::from_raw_parts_mut(array_ptr, self.count)
+        }
     }
 
     pub fn print_list(&self) {

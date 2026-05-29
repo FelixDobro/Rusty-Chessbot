@@ -14,29 +14,75 @@ use crate::chess::square::*;
 use std::arch::x86_64::{_pdep_u64, _pext_u64};
 use std::f32::consts::E;
 
+
+pub trait GenType {
+    const SHOULD_GEN_CAPTURES: bool;
+    const SHOULD_GEN_QUIETS: bool;
+}
+
+pub struct GenAll;
+impl GenType for GenAll {
+    const SHOULD_GEN_CAPTURES: bool = true;
+    const SHOULD_GEN_QUIETS: bool = true;
+}
+
+pub struct GenCaptures;
+impl GenType for GenCaptures{
+    const SHOULD_GEN_CAPTURES: bool = true;
+    const SHOULD_GEN_QUIETS: bool = false;
+}
+
+pub struct GenQuiets;
+impl GenType for GenQuiets {
+    const SHOULD_GEN_CAPTURES: bool = false;
+    const SHOULD_GEN_QUIETS: bool = true;
+}
+
+
 impl Board {
     pub fn generate_pseudolegals(&self) -> MoveList<MOVE_GEN_SIZE> {
         match self.turn {
-            White => self.pseudolegal_moves::<WhiteSide>(),
-            Black => self.pseudolegal_moves::<BlackSide>(),
+            White => self.gen_moves::<WhiteSide, GenAll>(),
+            Black => self.gen_moves::<BlackSide, GenAll>(),
             _ => panic!(),
         }
     }
 
-    fn pseudolegal_moves<S: Side>(&self) -> MoveList<MOVE_GEN_SIZE> {
-        let mut move_list = MoveList::new();
-        self.pawn_moves::<S>(&mut move_list);
-        self.knight_moves::<S>(&mut move_list);
-        self.bishop_moves::<S>(&mut move_list);
-        self.rook_moves::<S>(&mut move_list);
-        self.queen_moves::<S>(&mut move_list);
-        self.king_moves::<S>(&mut move_list);
-        self.castling_moves::<S>(&mut move_list);
-        move_list
+    pub fn generate_captures(&self) -> MoveList<MOVE_GEN_SIZE> {
+        match self.turn {
+            White => self.gen_moves::<WhiteSide, GenCaptures>(),
+            Black => self.gen_moves::<BlackSide, GenCaptures>(),
+            _ => panic!(),
+        }
     }
 
+    pub fn generate_quiets(&self) -> MoveList<MOVE_GEN_SIZE> {
+        match self.turn {
+            White => self.gen_moves::<WhiteSide, GenQuiets>(),
+            Black => self.gen_moves::<BlackSide, GenQuiets>(),
+            _ => panic!(),
+        }
+    }
+
+    fn gen_moves<S: Side, G: GenType>(&self) -> MoveList<MOVE_GEN_SIZE> {
+        let mut move_list = MoveList::new();
+        self.pawn_moves::<S, G>(&mut move_list);
+        self.knight_moves::<S, G>(&mut move_list);
+        self.bishop_moves::<S, G>(&mut move_list);
+        self.rook_moves::<S, G>(&mut move_list);
+        self.queen_moves::<S, G>(&mut move_list);
+        self.king_moves::<S, G>(&mut move_list);
+        self.castling_moves::<S, G>(&mut move_list);
+        move_list
+    } 
+
+
+
     #[inline(always)]
-    pub fn castling_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+    pub fn castling_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+        if !G::SHOULD_GEN_QUIETS {
+            return
+        }
         if !self.sq_attacked_by::<S::OPPOSITE>(Square::E1) {
             if self.castling_rights & CastlingRights::KingCastleWhite.index() != 0 {
                 if self.occupied & WHITE_KING_CASTLE_BLOCKERS == EMPTY_BB {
@@ -83,272 +129,292 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn king_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
-        let mut king_board = self.piece_bb[S::OFFSET + King.index()];
+    pub fn king_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+        let king_board = self.piece_bb[S::OFFSET + King.index()];
 
-        while king_board != EMPTY_BB {
-            let from_sqaure = king_board.lsb();
-
-            let pattern_board = KING_PATTERNS[from_sqaure.usize()];
-            let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
+        let from_sqaure = king_board.lsb();
+        let pattern_board = KING_PATTERNS[from_sqaure.usize()];
+       
+        if G::SHOULD_GEN_QUIETS {
             let mut normal_moves =
-                pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
-
-            while captures != EMPTY_BB {
-                let to_square = captures.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
-                captures.pop_lsb();
-            }
-
+            pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
             while normal_moves != EMPTY_BB {
                 let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
             }
-            king_board.pop_lsb();
         }
+        
+        if G::SHOULD_GEN_CAPTURES {
+            let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
+            while captures != EMPTY_BB {
+                let to_square = captures.lsb();
+                move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
+                captures.pop_lsb();
+            }
+        }
+        
     }
 
+
     #[inline(always)]
-    pub fn queen_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+    pub fn queen_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut queen_board = self.piece_bb[S::OFFSET + Queen.index()];
 
         while queen_board != EMPTY_BB {
             let from_sqaure = queen_board.lsb();
 
-            let mask = STRAIGHT_LINES[from_sqaure.usize()];
-            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            let mut pattern_board = STRAIGHT_LINES_MAGIC[from_sqaure.usize()][index as usize];
-            let mask = DIAGONAL_LINES[from_sqaure.usize()];
-            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            let diag_patterns = DIAG_LINES_MAGIC[from_sqaure.usize()][index as usize];
-
+            let mut pattern_board = self.straight_lines_w_bound(from_sqaure);
+            let diag_patterns= self.diag_lines_w_bound(from_sqaure);
             pattern_board |= diag_patterns;
 
-            let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
-            let mut normal_moves =
+            if G::SHOULD_GEN_QUIETS {
+                let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
-
-            while captures != EMPTY_BB {
-                let to_square = captures.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
-                captures.pop_lsb();
+                while normal_moves != EMPTY_BB {
+                    let to_square = normal_moves.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
+                    normal_moves.pop_lsb();
+                }
             }
-
-            while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
-                normal_moves.pop_lsb();
+            
+            if G::SHOULD_GEN_CAPTURES {
+                let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
+                while captures != EMPTY_BB {
+                    let to_square = captures.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
+                    captures.pop_lsb();
+                }
             }
+            
             queen_board.pop_lsb();
         }
     }
 
+
+
+
     #[inline(always)]
-    pub fn rook_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+    pub fn rook_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut rook_board = self.piece_bb[S::OFFSET + Rook.index()];
 
         while rook_board != EMPTY_BB {
             let from_sqaure = rook_board.lsb();
 
-            let mask = STRAIGHT_LINES[from_sqaure.usize()];
-            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            let pattern_board = STRAIGHT_LINES_MAGIC[from_sqaure.usize()][index as usize];
+            let pattern_board = self.straight_lines_w_bound(from_sqaure);
 
-            let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
-            let mut normal_moves =
+            if G::SHOULD_GEN_QUIETS {
+                let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
-
-            while captures != EMPTY_BB {
-                let to_square = captures.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
-                captures.pop_lsb();
+                while normal_moves != EMPTY_BB {
+                    let to_square = normal_moves.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
+                    normal_moves.pop_lsb();
+                }
             }
 
-            while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
-                normal_moves.pop_lsb();
+            if G::SHOULD_GEN_CAPTURES {
+                let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
+                while captures != EMPTY_BB {
+                    let to_square = captures.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
+                    captures.pop_lsb();
+                }
             }
             rook_board.pop_lsb();
         }
     }
 
+
     #[inline(always)]
-    pub fn bishop_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+    pub fn bishop_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut bishop_board = self.piece_bb[S::OFFSET + Bishop.index()];
 
         while bishop_board != EMPTY_BB {
             let from_sqaure = bishop_board.lsb();
 
-            let mask = DIAGONAL_LINES[from_sqaure.usize()];
-            let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            let pattern_board = DIAG_LINES_MAGIC[from_sqaure.usize()][index as usize];
+            let pattern_board = self.diag_lines_w_bound(from_sqaure);
 
-            let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
-            let mut normal_moves =
+            if G::SHOULD_GEN_QUIETS {
+                let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
 
-            while captures != EMPTY_BB {
-                let to_square = captures.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
-                captures.pop_lsb();
+                while normal_moves != EMPTY_BB {
+                    let to_square = normal_moves.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
+                    normal_moves.pop_lsb();
+                }
             }
 
-            while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
-                normal_moves.pop_lsb();
+            if G::SHOULD_GEN_CAPTURES {
+                let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
+                while captures != EMPTY_BB {
+                    let to_square = captures.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
+                    captures.pop_lsb();
+                }
             }
             bishop_board.pop_lsb();
         }
     }
 
+
     #[inline(always)]
-    pub fn knight_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+    pub fn knight_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut knight_board = self.piece_bb[S::OFFSET + Knight.index()];
 
         while knight_board != EMPTY_BB {
             let from_sqaure = knight_board.lsb();
 
             let pattern_board = KNIGHT_PATTERNS[from_sqaure.usize()];
-            let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
-            let mut normal_moves =
+            
+            if G::SHOULD_GEN_QUIETS {
+                let mut normal_moves =
                 pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
-
-            while captures != EMPTY_BB {
-                let to_square = captures.lsb();
-
-                move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
-                captures.pop_lsb();
+                while normal_moves != EMPTY_BB {
+                    let to_square = normal_moves.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
+                    normal_moves.pop_lsb();
+                }
             }
 
-            while normal_moves != EMPTY_BB {
-                let to_square = normal_moves.lsb();
-                move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
-                normal_moves.pop_lsb();
+            if G::SHOULD_GEN_CAPTURES {
+                let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
+                while captures != EMPTY_BB {
+                    let to_square = captures.lsb();
+                    move_list.push(Move::new(from_sqaure, to_square, Move::CAPTURE));
+                    captures.pop_lsb();
+                }
             }
             knight_board.pop_lsb();
         }
     }
 
+
     #[inline(always)]
-    pub fn pawn_moves<S: Side>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
+    pub fn pawn_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let pawn_board = self.piece_bb[Pawn.index() + S::OFFSET];
 
-        let mut pushes = S::shift_up(pawn_board) & !self.occupied;
-        let mut single_pushes = pushes & !S::LAST_RANK;
+        if G::SHOULD_GEN_QUIETS {
+            let pushes = S::shift_up(pawn_board) & !self.occupied;
+            let mut single_pushes = pushes & !S::LAST_RANK;
 
-        let mut double_pushes = S::shift_up(single_pushes) & S::DOUBLE_PUSH_RANK & !self.occupied;
-        let mut promotions = pushes & S::LAST_RANK;
+            let mut double_pushes = S::shift_up(single_pushes) & S::DOUBLE_PUSH_RANK & !self.occupied;
+            let mut promotions = pushes & S::LAST_RANK;
 
-        let attack_pattern_left = S::pawn_attack_pattern_l(pawn_board);
-        let attack_pattern_right = S::pawn_attack_pattern_r(pawn_board);
 
-        let all_left_attacks = attack_pattern_left & self.color_bb[S::OPPOSITE::INDEX];
-        let mut left_attacks = all_left_attacks & !S::LAST_RANK;
-        let mut left_promotions_cap = all_left_attacks & S::LAST_RANK;
+            while single_pushes != EMPTY_BB {
+                let to_square = single_pushes.lsb().i8();
+                move_list.push(Move::new(
+                    Square::from_u16((to_square - S::UP) as u16),
+                    Square::from_u16(to_square as u16),
+                    Move::QUIET,
+                ));
+                single_pushes.pop_lsb();
+            }
 
-        let all_right_attacks = attack_pattern_right & self.color_bb[S::OPPOSITE::INDEX];
+            while double_pushes != EMPTY_BB {
+                let to_square = double_pushes.lsb().i8();
+                move_list.push(Move::new(
+                    Square::from_u16((to_square - S::UP - S::UP) as u16),
+                    Square::from_u16(to_square as u16),
+                    Move::DOUBLE_PAWN,
+                ));
+                double_pushes.pop_lsb();
+            }
 
-        let mut right_attacks = all_right_attacks & !S::LAST_RANK;
-        let mut right_promotions_cap = S::LAST_RANK & all_right_attacks;
-
-        let mut left_en_passants = attack_pattern_left & self.en_passant;
-        let mut right_en_passants = attack_pattern_right & self.en_passant;
-
-        while single_pushes != EMPTY_BB {
-            let to_square = single_pushes.lsb().i8();
-            move_list.push(Move::new(
-                Square::from_u16((to_square - S::UP) as u16),
-                Square::from_u16(to_square as u16),
-                Move::QUIET,
-            ));
-            single_pushes.pop_lsb();
+            while promotions != EMPTY_BB {
+                let to_square = Square::from_u16(promotions.lsb().u16());
+                let from_square = Square::from_u16((to_square.i8() - S::UP) as u16);
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_KNIGHT));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_QUEEN));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_ROOK));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_BISHOP));
+                promotions.pop_lsb();
+            }
         }
 
-        while double_pushes != EMPTY_BB {
-            let to_square = double_pushes.lsb().i8();
-            move_list.push(Move::new(
-                Square::from_u16((to_square - S::UP - S::UP) as u16),
-                Square::from_u16(to_square as u16),
-                Move::DOUBLE_PAWN,
-            ));
-            double_pushes.pop_lsb();
-        }
+        if G::SHOULD_GEN_CAPTURES {
+            let attack_pattern_left = S::pawn_attack_pattern_l(pawn_board);
+            let attack_pattern_right = S::pawn_attack_pattern_r(pawn_board);
 
-        while promotions != EMPTY_BB {
-            let to_square = Square::from_u16(promotions.lsb().u16());
-            let from_square = Square::from_u16((to_square.i8() - S::UP) as u16);
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_KNIGHT));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_QUEEN));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_ROOK));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_BISHOP));
-            promotions.pop_lsb();
-        }
+            let all_left_attacks = attack_pattern_left & self.color_bb[S::OPPOSITE::INDEX];
+            let mut left_attacks = all_left_attacks & !S::LAST_RANK;
+            let mut left_promotions_cap = all_left_attacks & S::LAST_RANK;
 
-        while left_attacks != EMPTY_BB {
-            let to_square = left_attacks.lsb().i8();
-            move_list.push(Move::new(
-                Square::from_u16((to_square + S::DOWN_RIGHT) as u16),
-                Square::from_u16(to_square as u16),
-                Move::CAPTURE,
-            ));
-            left_attacks.pop_lsb();
-        }
+            let all_right_attacks = attack_pattern_right & self.color_bb[S::OPPOSITE::INDEX];
 
-        while right_attacks != EMPTY_BB {
-            let to_square = right_attacks.lsb().i8();
-            move_list.push(Move::new(
-                Square::from_u16((to_square + S::DOWN_LEFT) as u16),
-                Square::from_u16(to_square as u16),
-                Move::CAPTURE,
-            ));
-            right_attacks.pop_lsb();
-        }
+            let mut right_attacks = all_right_attacks & !S::LAST_RANK;
+            let mut right_promotions_cap = S::LAST_RANK & all_right_attacks;
 
-        while left_en_passants != EMPTY_BB {
-            let to_square = left_en_passants.lsb().i8();
-            move_list.push(Move::new(
-                Square::from_u16((to_square + S::DOWN_RIGHT) as u16),
-                Square::from_u16(to_square as u16),
-                Move::EN_PASSANT,
-            ));
-            left_en_passants.pop_lsb();
-        }
+            let mut left_en_passants = attack_pattern_left & self.en_passant;
+            let mut right_en_passants = attack_pattern_right & self.en_passant;
 
-        while right_en_passants != EMPTY_BB {
-            let to_square = right_en_passants.lsb().i8();
-            move_list.push(Move::new(
-                Square::from_u16((to_square + S::DOWN_LEFT) as u16),
-                Square::from_u16(to_square as u16),
-                Move::EN_PASSANT,
-            ));
-            right_en_passants.pop_lsb();
-        }
+            while left_attacks != EMPTY_BB {
+                let to_square = left_attacks.lsb().i8();
+                move_list.push(Move::new(
+                    Square::from_u16((to_square + S::DOWN_RIGHT) as u16),
+                    Square::from_u16(to_square as u16),
+                    Move::CAPTURE,
+                ));
+                left_attacks.pop_lsb();
+            }
 
-        while left_promotions_cap != EMPTY_BB {
-            let to_square_raw = left_promotions_cap.lsb().i8();
-            let from_square = Square::from_u16((to_square_raw + S::DOWN_RIGHT) as u16);
-            let to_square = Square::from_u16(to_square_raw as u16);
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_KNIGHT));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_BISHOP));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_QUEEN));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_ROOK));
-            left_promotions_cap.pop_lsb();
-        }
+            while right_attacks != EMPTY_BB {
+                let to_square = right_attacks.lsb().i8();
+                move_list.push(Move::new(
+                    Square::from_u16((to_square + S::DOWN_LEFT) as u16),
+                    Square::from_u16(to_square as u16),
+                    Move::CAPTURE,
+                ));
+                right_attacks.pop_lsb();
+            }
 
-        while right_promotions_cap != EMPTY_BB {
-            let to_square_raw = right_promotions_cap.lsb().i8();
-            let from_square = Square::from_u16((to_square_raw + S::DOWN_LEFT) as u16);
-            let to_square = Square::from_u16(to_square_raw as u16);
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_KNIGHT));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_BISHOP));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_QUEEN));
-            move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_ROOK));
-            right_promotions_cap.pop_lsb();
+            while left_en_passants != EMPTY_BB {
+                let to_square = left_en_passants.lsb().i8();
+                move_list.push(Move::new(
+                    Square::from_u16((to_square + S::DOWN_RIGHT) as u16),
+                    Square::from_u16(to_square as u16),
+                    Move::EN_PASSANT,
+                ));
+                left_en_passants.pop_lsb();
+            }
+
+            while right_en_passants != EMPTY_BB {
+                let to_square = right_en_passants.lsb().i8();
+                move_list.push(Move::new(
+                    Square::from_u16((to_square + S::DOWN_LEFT) as u16),
+                    Square::from_u16(to_square as u16),
+                    Move::EN_PASSANT,
+                ));
+                right_en_passants.pop_lsb();
+            }
+
+            while left_promotions_cap != EMPTY_BB {
+                let to_square_raw = left_promotions_cap.lsb().i8();
+                let from_square = Square::from_u16((to_square_raw + S::DOWN_RIGHT) as u16);
+                let to_square = Square::from_u16(to_square_raw as u16);
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_KNIGHT));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_BISHOP));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_QUEEN));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_ROOK));
+                left_promotions_cap.pop_lsb();
+            }
+
+            while right_promotions_cap != EMPTY_BB {
+                let to_square_raw = right_promotions_cap.lsb().i8();
+                let from_square = Square::from_u16((to_square_raw + S::DOWN_LEFT) as u16);
+                let to_square = Square::from_u16(to_square_raw as u16);
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_KNIGHT));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_BISHOP));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_QUEEN));
+                move_list.push(Move::new(from_square, to_square, Move::PROMO_CAP_ROOK));
+                right_promotions_cap.pop_lsb();
+            }
         }
     }
+
+
 
     #[inline(always)]
     pub fn make_pl_move<const EVAL: bool>(&mut self, m: Move) -> bool {
@@ -375,7 +441,7 @@ impl Board {
 
 
     #[inline(always)]
-    pub fn make_pl_move_from_strings<const EVAL: bool>(&mut self, moves: &[&str])  {
+    fn make_pl_move_from_strings<const EVAL: bool>(&mut self, moves: &[&str])  {
         for &m in moves {
             let m_new = Move::from_string(m, self).unwrap();
             self.make_pl_move::<EVAL>(m_new);

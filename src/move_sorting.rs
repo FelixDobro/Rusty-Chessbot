@@ -1,3 +1,5 @@
+use core::num;
+
 use rayon::str::SplitWhitespace;
 
 use crate::chess::board::Board;
@@ -24,14 +26,27 @@ impl NumericSorting {
 }
 
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum MoveGenStage {
+    HashMove,
+    GenerateCaptures,
+    YieldGoodCaptures,
+    GenerateQuiets,
+    YieldQuiets,
+    YieldBadCaptures,
+    Done,
+}
 
 pub struct AdvancedSorting {
-    tt_move: Option<Move>,
-    generate_moves: bool,
-    hash_move: bool,
-    moves: [(Move, i16) ; MOVE_GEN_SIZE],
-    current: usize,
-    done: bool
+    tt_move: Move,
+    stage: MoveGenStage,
+    captures: [(Move, i16); MOVE_GEN_SIZE],
+    quiets: [(Move, i16); MOVE_GEN_SIZE],
+    current_capture: usize,
+    current_quiet: usize,
+    num_good_captures: usize,
+    num_quiets: usize,
+    num_captures: usize,
 }
 
 impl AdvancedSorting {
@@ -39,55 +54,125 @@ impl AdvancedSorting {
     const PIECE_VALS: [i16; 7] = [1,2,3,4,5,6,0];
     const MAX_PIECE_VAL: i16 = 6;
 
-    pub fn new(hash_move: Option<Move>) -> Self {
-        Self { tt_move: hash_move, moves: [(NULL_MOVE, 0i16); MOVE_GEN_SIZE], generate_moves: true, hash_move: true, current: 0, done: false}
+    pub fn new(hash_move: Move) -> Self {
+        Self { 
+            tt_move: hash_move, 
+            captures: [(NULL_MOVE, 0i16); MOVE_GEN_SIZE], 
+            quiets: [(NULL_MOVE, 0i16); MOVE_GEN_SIZE], 
+            current_capture: 0,
+            current_quiet: 0,
+            num_good_captures:0,
+            num_quiets:0,
+            num_captures:0,
+            stage:MoveGenStage::HashMove
+        }
+    }
+
+
+   #[inline(always)]
+    pub fn next(&mut self, board: &Board) -> Option<Move> {
+        loop {
+            match self.stage {
+                MoveGenStage::HashMove => {
+                    self.stage = MoveGenStage::GenerateCaptures;
+                    if self.tt_move != NULL_MOVE{
+                        return Some(self.tt_move);
+                    }
+                }
+                
+                MoveGenStage::GenerateCaptures => {
+                    let captures = board.generate_captures();
+                    self.score_captures(board);
+                    
+                    self.stage = MoveGenStage::YieldGoodCaptures;
+                }
+                
+                MoveGenStage::YieldGoodCaptures => {
+                    if self.current_capture < self.num_good_captures {
+                        let m = self.captures[self.current_capture].0;
+                        self.current_capture += 1;
+
+                        if m != self.tt_move {
+                            return Some(m);
+                        }
+                    } else {
+                        self.stage = MoveGenStage::GenerateQuiets;
+                    }
+                }
+                
+                MoveGenStage::GenerateQuiets => {
+
+                    self.score_quiets(board);
+                    self.stage = MoveGenStage::YieldQuiets;
+                }
+                
+                MoveGenStage::YieldQuiets => {
+                    if self.current_quiet < self.num_quiets {
+                        let m = self.quiets[self.current_quiet].0;
+                        self.current_quiet += 1;
+                        if m != self.tt_move {
+                            return Some(m);
+                        }
+                    } else {
+                        self.stage = MoveGenStage::YieldBadCaptures;
+                    }
+                }
+                
+                MoveGenStage::YieldBadCaptures => {
+                    if self.current_capture < self.num_captures {
+                        let m = self.captures[self.current_capture].0;
+                        self.current_capture += 1;
+                        if m != self.tt_move {
+                            return Some(m);
+                        }
+                    } else {
+                        self.stage = MoveGenStage::Done;
+                    }
+                }
+                
+                MoveGenStage::Done => return None,
+            }
+        }
     }
 
     #[inline(always)]
-    pub fn next(&mut self, board: &Board) -> Option<Move> {
-
-        if self.hash_move {
-            if self.tt_move.is_some() {
-                self.hash_move = false;
-                return self.tt_move;
+    pub fn score_captures(&mut self, board: &Board) {
+        let mut moves_evaluated = [(NULL_MOVE, 0i16); MOVE_GEN_SIZE];
+        let mut num_good_moves = 0;
+        
+        let moves = board.generate_captures();
+        self.num_captures = moves.size();
+        for (i, &m) in moves.as_slice().iter().enumerate() {
+            let eval = Self::eval_move(board, m);
+            if eval > 0 {
+                num_good_moves += 1;
             }
-            self.hash_move = false;
-            return self.next(board);
+        
+            moves_evaluated[i] = (m, eval);
         }
-        else if self.generate_moves {
+        moves_evaluated.sort_by_key(|entry| - entry.1);
+        self.num_good_captures = num_good_moves;
 
-            let moves = board.generate_pseudolegals();
+        self.captures = moves_evaluated;
+    }
 
-            let mut scored_moves: [(Move, i16); 256] = [(NULL_MOVE, 0); MOVE_GEN_SIZE];
-            let len = moves.size();
-            let move_slice = moves.as_slice();
-            for i in 0..len {
-                let m = move_slice[i];
-                let score = if self.tt_move.is_some_and(|tt_move| tt_move == m) { - Self::HASH_M_VAL }
-                else { Self::eval_move(board, m) };
-                scored_moves[i] = (m, score);
-            }
+    #[inline(always)]
+    pub fn score_quiets(&mut self, board: &Board) {
+        let mut moves_evaluated = [(NULL_MOVE, 0i16); MOVE_GEN_SIZE];
 
-            self.generate_moves = false;
-            let active_slice = &mut scored_moves[0..len];
-            active_slice.sort_unstable_by_key(|&(_, score)| score);
-            self.moves[0..len].copy_from_slice(active_slice);
-            self.current = len;
-            if len == 0 {self.done = true}
+        let mut num_quiets = 0;
+        for (i, &m) in board.generate_quiets().as_slice().iter().enumerate() {
+            num_quiets += 1;
+            moves_evaluated[i] = (m, 0);
         }
-        if self.current == 0 {
-            self.done = true
-        }
-        if self.done {
-            return None;
-        }
-
-        self.current -= 1;
-        Some(self.moves[self.current].0)
+        moves_evaluated.sort_by_key(|entry| entry.1);
+        self.num_quiets = num_quiets;
+        self.quiets = moves_evaluated;
     }
 
     #[inline(always)]
     pub fn static_e_e(board: &Board, m: Move) -> i16 {
+
         let to = m.to();
         let mut attack_mask = board.attack_mask(to);
         let mut turn = board.get_turn();
@@ -95,6 +180,7 @@ impl AdvancedSorting {
         let mut index = 1;
         let mut gain = [0i16; 32];
         let mut already_attacked = Empty_BB;
+
         gain[0] = SIMPLE_CP_VALUES[board.get_piece(to).index()];
         while attack_mask != Empty_BB {
             let is_white_turn = turn.is_white();
@@ -151,7 +237,7 @@ impl AdvancedSorting {
 
     pub fn set_hash_m(&mut self, m: Move) {
         if m != NULL_MOVE {
-            self.tt_move = Some(m);
+            self.tt_move = m;
         }
     
     }

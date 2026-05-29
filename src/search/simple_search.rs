@@ -1,7 +1,7 @@
 use crate::chess::board::Board;
 use crate::chess::board::evaluation::{CHECK_MATE, NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::NULL_MOVE;
-use crate::move_sorting::{AdvancedSorting, NumericSorting};
+use crate::move_sorting::{AdvancedSorting, MoveGenStage, NumericSorting};
 use crate::search::Ntype::Exact;
 use crate::search::{Ntype, SearchAlgorithm, SearchLimits, SearchResult, TTable, TTableEntry};
 
@@ -96,14 +96,40 @@ impl NegamaxTT {
         }
     }
 
+    pub fn quiesence_search(&mut self, board: &mut Board, alpha: i16, beta: i16) -> i16 {
+
+        let mut tt_move = None;
+        if let Some(entry) = self.ttable.get(board.get_hash()) {
+            if entry.depth >= 0 {
+                match entry.ntype {
+                    Ntype::Exact => {
+                        return entry.score;
+                    }
+                    Ntype::Lower => {
+                        if beta <= entry.score {
+                            return entry.score;
+                        }
+                    }
+                    Ntype::Upper => {
+                        if alpha >= entry.score {
+                            return entry.score;
+                        }
+                    }
+                };
+            }
+            tt_move = Some(entry.best_move);
+        }
+        0
+    }
+
     pub fn negamax(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult> {
         self.nodes_searched = 0;
         let mut best_val = NEG_INFINITY;
         let mut alpha = NEG_INFINITY;
 
-        let mut tt_move = None;
+        let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
-            tt_move = Some(entry.best_move);
+            tt_move = entry.best_move;
         }
 
         let mut sorter = AdvancedSorting::new(tt_move);
@@ -129,11 +155,7 @@ impl NegamaxTT {
                 best_move: if best_move != NULL_MOVE {
                     best_move
                 } else {
-                    if tt_move.is_some() {
-                        tt_move.unwrap()
-                    } else {
-                        NULL_MOVE
-                    }
+                    tt_move
                 },
                 depth: depth,
                 score: res,
@@ -148,11 +170,7 @@ impl NegamaxTT {
             best_move: if best_move != NULL_MOVE {
                 best_move
             } else {
-                if tt_move.is_some() {
-                    tt_move.unwrap()
-                } else {
-                    NULL_MOVE
-                }
+                tt_move
             },
             depth: depth,
             score: alpha,
@@ -175,7 +193,7 @@ impl NegamaxTT {
 
     fn negamax_p(&mut self, board: &mut Board, depth: u8, mut alpha: i16, beta: i16) -> i16 {
         self.nodes_searched += 1;
-        let mut move_iter = AdvancedSorting::new(None);
+   
         let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
             if entry.depth >= depth {
@@ -196,12 +214,12 @@ impl NegamaxTT {
                 };
             }
             tt_move = entry.best_move;
-            move_iter.set_hash_m(entry.best_move);
         }
-
+        
         if depth == 0 {
             return board.eval();
         }
+        
         if board.can_claim_draw() {
             return 0;
         }
@@ -209,6 +227,7 @@ impl NegamaxTT {
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
         let mut num_moves = 0;
+        let mut move_iter = AdvancedSorting::new(tt_move);
         while let Some(m) = move_iter.next(board) {
             if board.make_pl_move::<true>(m) {
                 num_moves += 1;
@@ -238,10 +257,10 @@ impl NegamaxTT {
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {
-                    best_move
-                } else {
-                    tt_move
-                },
+                best_move
+            } else {
+                tt_move
+            },
                 depth: depth,
                 score: res,
                 ntype: Exact,
