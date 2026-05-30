@@ -68,7 +68,7 @@ impl AdvancedSorting {
 
 
    #[inline(always)]
-    pub fn next(&mut self, board: &Board) -> Option<Move> {
+    pub fn next(&mut self, board: &Board, killer_table: &[Move; 3]) -> Option<Move> {
         loop {
             match self.stage {
                 MoveGenStage::HashMove => {
@@ -79,7 +79,6 @@ impl AdvancedSorting {
                 }
                 
                 MoveGenStage::GenerateCaptures => {
-                    let captures = board.generate_captures();
                     self.score_captures(board);
                     
                     self.stage = MoveGenStage::YieldGoodCaptures;
@@ -100,7 +99,7 @@ impl AdvancedSorting {
                 
                 MoveGenStage::GenerateQuiets => {
 
-                    self.score_quiets(board);
+                    self.score_quiets(board, killer_table);
                     self.stage = MoveGenStage::YieldQuiets;
                 }
                 
@@ -155,15 +154,19 @@ impl AdvancedSorting {
     }
 
     #[inline(always)]
-    pub fn score_quiets(&mut self, board: &Board) {
+    pub fn score_quiets(&mut self, board: &Board, killer_table: &[Move; 3]) {
         let mut moves_evaluated = [(NULL_MOVE, 0i16); MOVE_GEN_SIZE];
 
         let mut num_quiets = 0;
-        for (i, &m) in board.generate_quiets().as_slice().iter().enumerate() {
-            num_quiets += 1;
-            moves_evaluated[i] = (m, 0);
+        for (i, m) in board.generate_quiets().as_slice().iter().enumerate() {
+            num_quiets += 1; 
+            let mut value = 0;
+            if killer_table.contains(m) {
+                value += 1;
+            }
+            moves_evaluated[i] = (*m, value);
         }
-        moves_evaluated.sort_by_key(|entry| entry.1);
+        moves_evaluated.sort_by_key(|entry| - entry.1);
         self.num_quiets = num_quiets;
         self.quiets = moves_evaluated;
     }

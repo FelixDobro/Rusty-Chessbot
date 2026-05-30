@@ -10,6 +10,7 @@ use crate::chess::square::Square;
 use crate::{chess::chess_move::Move};
 
 
+pub const MAX_SEARCH_DEPTH: u8 = 64;
 
 #[derive(Default, Clone, Debug)]
 pub struct SearchLimits {
@@ -48,7 +49,7 @@ pub struct SearchResult {
 impl SearchResult {
 
     pub fn print_info(&self) {
-        println!("{}, eval: {}, depth: {}, nodes: {}", self.best_move, self.evaluation, self.depth, self.nodes_searched);
+        println!("{}, eval: {}, depth: {}, nodes: {} Mio", self.best_move, self.evaluation, self.depth, (self.nodes_searched as f32) / 1000000f32);
     }
 }
 

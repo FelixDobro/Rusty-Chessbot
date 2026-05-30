@@ -1,26 +1,28 @@
 use std::thread::current;
 use std::time::{Duration, Instant};
 
-use crate::search::{SearchAlgorithm, SearchLimits, SearchResult};
+use crate::search::simple_search::NegamaxTT;
+use crate::search::{MAX_SEARCH_DEPTH, SearchAlgorithm, SearchLimits, SearchResult};
 use crate::chess::board::{self, Board};
 
 
-pub struct IDSearch<S: SearchAlgorithm> {
-    search_algo: S
+
+pub struct IDSearch {
+    search_algo: NegamaxTT
 }
 
-impl<S: SearchAlgorithm> IDSearch<S> {
-    pub fn new(algo: S) -> Self {
+impl IDSearch {
+    pub fn new(algo: NegamaxTT) -> Self {
         Self { search_algo: algo }
     }
 
     pub fn timed_search(&mut self, board: &mut Board, search_time: Duration) -> Option<SearchResult>{
         let total_time = Instant::now();
         let mut last_nodes = 1;
-
+        self.search_algo.reset_killers();
         let mut best_res: Option<SearchResult> = None;
 
-        for current_depth in 1..100 {
+        for current_depth in 1..MAX_SEARCH_DEPTH {
             let depth_start_time = Instant::now();
             if let Some(result) = self.search_algo.search(board, &SearchLimits::depth(current_depth)) {
                 let depth_elapsed = depth_start_time.elapsed();
@@ -45,7 +47,7 @@ impl<S: SearchAlgorithm> IDSearch<S> {
     }
 }
 
-impl<S: SearchAlgorithm> SearchAlgorithm for IDSearch<S> {
+impl SearchAlgorithm for IDSearch {
 
     fn search(&mut self, board: &mut Board, limits: &SearchLimits) -> Option<SearchResult> {
         if let Some(depth) = limits.max_depth {
