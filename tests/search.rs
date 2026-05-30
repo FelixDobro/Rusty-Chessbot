@@ -26,12 +26,12 @@ fn can_find_move() {
 fn define_move_order() {
     let mut search = NegamaxTT::new(10000);
     let mut board = Board::from_fen("r1bqkbnr/ppp1pppp/2n5/3p4/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 0 1").unwrap();
-    let search_result = search.search(&mut board, &SearchLimits::depth(1)).unwrap();
+    let search_result = search.search(&mut board, &SearchLimits::depth(2)).unwrap();
 
     let mut sorter = AdvancedSorting::new(search_result.best_move);
     assert_eq!(search_result.best_move, sorter.next(&board).unwrap(), "Not the right move order");
 
-    let next_move = Move::from_string("e4d5", &board).unwrap();
+    let next_move = Move::from_string("c3d5", &board).unwrap();
     assert_eq!(next_move, sorter.next(&board).unwrap(), "Not the right move order");
 
 }

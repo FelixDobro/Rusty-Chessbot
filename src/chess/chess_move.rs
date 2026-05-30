@@ -165,6 +165,9 @@ impl<const N: usize> MoveList<N> {
         self.count -= 1;
     }
 
+    pub fn from_slice(moves: [Move; N], size: usize) -> Self {
+        Self { moves: MaybeUninit::new(moves), count: size }
+    }
 
     #[inline(always)]
     pub fn as_slice(&self) -> &[Move] {
