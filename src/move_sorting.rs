@@ -4,8 +4,6 @@ use rayon::str::SplitWhitespace;
 
 use crate::chess::board::Board;
 use crate::chess::board::bitboard::{Bitboard, EMPTY as Empty_BB};
-use crate::chess::board::FenError::HalfMove;
-use crate::chess::board::move_gen;
 use crate::chess::board::evaluation::{*};
 use crate::chess::chess_move::MoveList;
 use crate::chess::chess_move::Move;
@@ -143,7 +141,7 @@ impl AdvancedSorting {
         let moves = board.generate_captures();
         self.num_captures = moves.size();
         for (i, &m) in moves.as_slice().iter().enumerate() {
-            let eval = Self::eval_move(board, m);
+            let eval = Self::eval_capture(board, m);
             if eval > 0 {
                 num_good_moves += 1;
             }
@@ -223,7 +221,7 @@ impl AdvancedSorting {
     }
 
     #[inline(always)]
-    pub fn eval_move(board: &Board, m: Move) -> i16 {
+    pub fn eval_capture(board: &Board, m: Move) -> i16 {
         let (from, to) = (m.from(), m.to());
         let (from_piece, to_piece) = (board.get_piece(from), board.get_piece(to));
         if to_piece != Empty {
@@ -233,6 +231,24 @@ impl AdvancedSorting {
             return victim_score + attacker_bonus + static_exchange_e;
         }
         0
+    }
+
+    pub fn sort_only_captures(board: &Board, hash_move: Move) -> MoveList<64>{
+        let mut moves_evaluated = [(NULL_MOVE, 0i16); 64];
+        let moves = board.generate_captures();
+        let num_captures = moves.size();
+        for (i, &m) in moves.as_slice().iter().enumerate() {
+            let eval = if m == hash_move {Self::HASH_M_VAL} else {Self::eval_capture(board, m)};
+            moves_evaluated[i] = (m, eval);
+        }
+        moves_evaluated
+        .sort_by_key(|entry| - entry.1);
+
+        let mut result = [NULL_MOVE; 64];
+        for i in 0..num_captures {
+            result[i] = moves_evaluated[i].0;
+        }
+        MoveList::from_slice(result, num_captures)
     }
 
     pub fn set_hash_m(&mut self, m: Move) {

@@ -134,7 +134,8 @@ impl NegamaxTT {
         }
 
         let mut num_moves_executed = 0;
-        for &m in board.generate_captures().as_slice() {
+        let captures = AdvancedSorting::sort_only_captures(board, tt_move);
+        for &m in captures.as_slice() {
             if board.make_pl_move::<true>(m) {
                 num_moves_executed += 1;
                 let score = - self.quiesence_search(board, -beta, -alpha);
