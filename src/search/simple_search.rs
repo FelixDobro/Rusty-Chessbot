@@ -117,6 +117,10 @@ impl NegamaxTT {
 
     pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
         self.nodes_searched += 1;
+        if board.can_claim_draw() {
+            return 0
+        }
+        
         let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
             if entry.depth >= 0 {
@@ -139,10 +143,6 @@ impl NegamaxTT {
             tt_move = entry.best_move;
         }
 
-        if board.can_claim_draw() {
-            return 0
-        }
-        
         let stand_part = board.eval();
 
         if stand_part >= beta {
@@ -243,7 +243,9 @@ impl NegamaxTT {
 
     fn negamax_p(&mut self, board: &mut Board, depth: u8, mut alpha: i16, beta: i16, ply: usize) -> i16 {
         self.nodes_searched += 1;
-
+        if board.can_claim_draw() {
+            return 0;
+        }
         let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
             if entry.depth >= depth {
@@ -270,10 +272,7 @@ impl NegamaxTT {
             self.nodes_searched -= 1;
             return self.quiesence_search(board, alpha, beta);
         }
-        
-        if board.can_claim_draw() {
-            return 0;
-        }
+    
 
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
