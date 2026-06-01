@@ -72,7 +72,7 @@ impl Negamax {
             }
         }
         if num_moves_found == 0 {
-            let res = board.result();
+            let res = board.result(depth);
             return res;
         }
 
@@ -123,23 +123,23 @@ impl NegamaxTT {
         
         let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
-            if entry.depth >= 0 {
-                match entry.ntype {
-                    Ntype::Exact => {
+             
+            match entry.ntype {
+                Ntype::Exact => {
+                    return entry.score;
+                }
+                Ntype::Lower => {
+                    if beta <= entry.score {
                         return entry.score;
                     }
-                    Ntype::Lower => {
-                        if beta <= entry.score {
-                            return entry.score;
-                        }
+                }
+                Ntype::Upper => {
+                    if alpha >= entry.score {
+                        return entry.score;
                     }
-                    Ntype::Upper => {
-                        if alpha >= entry.score {
-                            return entry.score;
-                        }
-                    }
-                };
-            }
+                }
+            };
+            
             tt_move = entry.best_move;
         }
 
@@ -165,7 +165,7 @@ impl NegamaxTT {
         } 
         
         if num_moves_executed == 0 {
-            return board.result();
+            return board.result(0);
         }
         
         alpha
@@ -199,7 +199,7 @@ impl NegamaxTT {
         }
 
         if self.nodes_searched == 0 {
-            let res = board.result();
+            let res = board.result(depth);
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {
@@ -304,7 +304,7 @@ impl NegamaxTT {
         }
 
         if num_moves == 0 {
-            let res = board.result();
+            let res = board.result(depth);
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {

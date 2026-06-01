@@ -5,9 +5,9 @@ use crate::chess::constants::Piece::{*};
 use crate::chess::board::bitboard::EMPTY as EMPTY_BB;
 use crate::chess::square::Square;
 
-pub const CHECK_MATE: i16 = i16::MIN + 3;
-pub const NEG_INFINITY: i16 = i16::MIN + 1;
-pub const POSITIVE_INFINITY: i16 = i16::MAX - 1;
+pub const CHECK_MATE: i16 = i16::MIN + 100;
+pub const NEG_INFINITY: i16 = i16::MIN + 2;
+pub const POSITIVE_INFINITY: i16 = - NEG_INFINITY;
 
 impl Board {
 
@@ -116,17 +116,17 @@ impl Board {
     }
     
     #[inline(always)]
-    pub fn result(&self) -> i16 {
+    pub fn result(&self, depth: u8) -> i16 {
         match self.turn {
             Color::White => {
                 if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
-                    return CHECK_MATE;
+                    return CHECK_MATE + depth as i16;
                 }
                 0
             }
             Color::Black => {
                 if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
-                    return CHECK_MATE;
+                    return CHECK_MATE + depth as i16;
                 }
                 0
             }
