@@ -116,17 +116,17 @@ impl Board {
     }
     
     #[inline(always)]
-    pub fn result(&self, depth: u8) -> i16 {
+    pub fn result(&self) -> i16 {
         match self.turn {
             Color::White => {
                 if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
-                    return CHECK_MATE - depth as i16;
+                    return CHECK_MATE;
                 }
                 0
             }
             Color::Black => {
                 if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
-                    return CHECK_MATE - depth as i16;
+                    return CHECK_MATE;
                 }
                 0
             }

@@ -1,6 +1,7 @@
 use crate::chess::board::Board;
 use crate::chess::board::evaluation::{NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::{Move, NULL_MOVE};
+use crate::chess::constants::Color;
 use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::Ntype::Exact;
 use crate::search::{Ntype, SearchAlgorithm, SearchLimits, SearchResult, TTable, TTableEntry};
@@ -72,7 +73,7 @@ impl Negamax {
             }
         }
         if num_moves_found == 0 {
-            let res = board.result(depth);
+            let res = board.result();
             return res;
         }
 
@@ -89,7 +90,7 @@ impl SearchAlgorithm for Negamax {
 pub struct NegamaxTT {
     ttable: TTable,
     killer_table: [[Move; 3]; 64],
-    history_table: [[i16; 64]; 64],
+    history_table: [[[i16; 64]; 64]; 2],
     age: u8,
     nodes_searched: u64,
 }
@@ -102,7 +103,7 @@ impl NegamaxTT {
             age: 0,
             nodes_searched: 0,
             killer_table: [[NULL_MOVE; 3]; 64],
-            history_table: [[0i16; 64]; 64],
+            history_table: [[[0i16; 64]; 64]; 2],
         }
     }
 
@@ -118,10 +119,10 @@ impl NegamaxTT {
     }
 
     #[inline(always)]
-    pub fn append_history_move(&mut self, m: Move, bonus: i16) {
-        let entry = &mut self.history_table[m.from().index()][m.to().index()];
-        let result = AdvancedSorting::HISTORY_MIN.max(*entry + bonus).min(AdvancedSorting::HISTORY_MAX);
-        *entry = result;
+    pub fn append_history_move(&mut self, m: Move, bonus: i16, turn: Color) {
+        let clamped_bonus = AdvancedSorting::HISTORY_MIN.max(bonus).min(AdvancedSorting::HISTORY_MAX);
+        self.history_table[turn.index()][m.from().index()][m.to().index()] += 
+        clamped_bonus - self.history_table[turn.index()][m.from().index()][m.to().index()] * clamped_bonus.abs() / AdvancedSorting::HISTORY_MAX;
     }
 
     pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
@@ -217,7 +218,7 @@ impl NegamaxTT {
         }
 
         if self.nodes_searched == 0 {
-            let res = board.result(depth);
+            let res = board.result();
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {
@@ -312,14 +313,9 @@ impl NegamaxTT {
                     });
                     if m.is_quiet() {
                         self.append_killer_move(ply, m);
-                        self.append_history_move(m, (depth*depth) as i16);
+                        self.append_history_move(m, (depth*depth) as i16, board.get_turn());
                     }
                     return beta;
-                }
-                else {
-                    if m.is_quiet() {
-                        self.append_history_move(m, -(300*depth as i16 - 250));
-                    }
                 }
                 if new_eval > alpha {
                     alpha = new_eval;
@@ -330,7 +326,7 @@ impl NegamaxTT {
         }
 
         if num_moves == 0 {
-            let res = board.result(depth);
+            let res = board.result();
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {
