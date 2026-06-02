@@ -1,6 +1,3 @@
-use core::num;
-
-use rayon::str::SplitWhitespace;
 
 use crate::chess::board::Board;
 use crate::chess::board::bitboard::{Bitboard, EMPTY as Empty_BB};
@@ -13,6 +10,7 @@ use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::Piece::{*};
 use crate::chess::constants::{BlackSide, WhiteSide};
 use crate::chess::square::Square;
+use crate::move_sorting::EvaluatedMoveList;
 
 
 pub struct NumericSorting;
@@ -38,12 +36,10 @@ pub enum MoveGenStage {
 pub struct AdvancedSorting {
     tt_move: Move,
     stage: MoveGenStage,
-    captures: [(Move, i16); MOVE_GEN_SIZE],
-    quiets: [(Move, i16); MOVE_GEN_SIZE],
+    captures: EvaluatedMoveList<MOVE_GEN_SIZE>,
+    quiets: EvaluatedMoveList<MOVE_GEN_SIZE>,
     current_capture: usize,
-    current_quiet: usize,
     num_good_captures: usize,
-    num_quiets: usize,
     num_captures: usize,
 }
 
@@ -55,12 +51,10 @@ impl AdvancedSorting {
     pub fn new(hash_move: Move) -> Self {
         Self { 
             tt_move: hash_move, 
-            captures: [(NULL_MOVE, 0i16); MOVE_GEN_SIZE], 
-            quiets: [(NULL_MOVE, 0i16); MOVE_GEN_SIZE], 
+            captures: EvaluatedMoveList::new(), 
+            quiets: EvaluatedMoveList::new(), 
             current_capture: 0,
-            current_quiet: 0,
             num_good_captures:0,
-            num_quiets:0,
             num_captures:0,
             stage:MoveGenStage::HashMove
         }
@@ -86,7 +80,7 @@ impl AdvancedSorting {
                 
                 MoveGenStage::YieldGoodCaptures => {
                     if self.current_capture < self.num_good_captures {
-                        let m = self.captures[self.current_capture].0;
+                        let m = self.captures.selection_sort_next().unwrap();
                         self.current_capture += 1;
 
                         if m != self.tt_move {
@@ -104,9 +98,7 @@ impl AdvancedSorting {
                 }
                 
                 MoveGenStage::YieldQuiets => {
-                    if self.current_quiet < self.num_quiets {
-                        let m = self.quiets[self.current_quiet].0;
-                        self.current_quiet += 1;
+                    if let Some(m) = self.quiets.selection_sort_next() {
                         if m != self.tt_move {
                             return Some(m);
                         }
@@ -117,7 +109,7 @@ impl AdvancedSorting {
                 
                 MoveGenStage::YieldBadCaptures => {
                     if self.current_capture < self.num_captures {
-                        let m = self.captures[self.current_capture].0;
+                        let m = self.captures.selection_sort_next().unwrap();
                         self.current_capture += 1;
                         if m != self.tt_move {
                             return Some(m);
@@ -134,40 +126,37 @@ impl AdvancedSorting {
 
     #[inline(always)]
     pub fn score_captures(&mut self, board: &Board) {
-        let mut moves_evaluated = [(NULL_MOVE, 0i16); MOVE_GEN_SIZE];
+        let mut moves_evaluated = EvaluatedMoveList::new();
         let mut num_good_moves = 0;
         
         let moves = board.generate_captures();
         self.num_captures = moves.size();
-        for (i, &m) in moves.as_slice().iter().enumerate() {
+        for &m in moves.as_slice().iter() {
             let eval = Self::eval_capture(board, m);
             if eval > 0 {
                 num_good_moves += 1;
             }
         
-            moves_evaluated[i] = (m, eval);
+            moves_evaluated.push(m, eval);
         }
-        moves_evaluated.sort_by_key(|entry| - entry.1);
-        self.num_good_captures = num_good_moves;
 
+        self.num_good_captures = num_good_moves;
         self.captures = moves_evaluated;
     }
 
     #[inline(always)]
     pub fn score_quiets(&mut self, board: &Board, killer_table: &[Move; 3]) {
-        let mut moves_evaluated = [(NULL_MOVE, 0i16); MOVE_GEN_SIZE];
+        let mut moves_evaluated = EvaluatedMoveList::new();
 
         let mut num_quiets = 0;
-        for (i, m) in board.generate_quiets().as_slice().iter().enumerate() {
+        for m in board.generate_quiets().as_slice().iter() {
             num_quiets += 1; 
             let mut value = 0;
             if killer_table.contains(m) {
                 value += 1;
             }
-            moves_evaluated[i] = (*m, value);
+            moves_evaluated.push(*m, value);
         }
-        moves_evaluated.sort_by_key(|entry| - entry.1);
-        self.num_quiets = num_quiets;
         self.quiets = moves_evaluated;
     }
 
@@ -265,4 +254,16 @@ impl AdvancedSorting {
 
 
     
+#[cfg(test)]
+mod test {
+    use crate::{chess::{board::Board, chess_move::NULL_MOVE}, move_sorting::advanced_sorting::AdvancedSorting};
 
+
+    #[test]
+    fn insert_empty_moves() {
+        let mut sorter = AdvancedSorting::new(NULL_MOVE);
+        let board = Board::from_fen("6k1/8/6K1/8/8/8/8/1R6 w - - 0 1").unwrap();
+        let m = sorter.next(&board, &[NULL_MOVE, NULL_MOVE, NULL_MOVE]);
+        assert!(m.is_some(), "No moves found");
+    }
+}

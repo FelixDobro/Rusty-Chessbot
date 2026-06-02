@@ -1,7 +1,7 @@
 use crate::chess::board::Board;
-use crate::chess::board::evaluation::{CHECK_MATE, NEG_INFINITY, POSITIVE_INFINITY};
+use crate::chess::board::evaluation::{NEG_INFINITY};
 use crate::chess::chess_move::{Move, NULL_MOVE};
-use crate::move_sorting::{AdvancedSorting, MoveGenStage, NumericSorting};
+use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::Ntype::Exact;
 use crate::search::{Ntype, SearchAlgorithm, SearchLimits, SearchResult, TTable, TTableEntry};
 
