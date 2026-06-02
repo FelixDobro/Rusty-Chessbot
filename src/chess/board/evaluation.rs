@@ -120,13 +120,13 @@ impl Board {
         match self.turn {
             Color::White => {
                 if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
-                    return CHECK_MATE + depth as i16;
+                    return CHECK_MATE - depth as i16;
                 }
                 0
             }
             Color::Black => {
                 if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
-                    return CHECK_MATE + depth as i16;
+                    return CHECK_MATE - depth as i16;
                 }
                 0
             }
