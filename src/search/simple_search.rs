@@ -1,5 +1,5 @@
 use crate::chess::board::Board;
-use crate::chess::board::evaluation::{NEG_INFINITY};
+use crate::chess::board::evaluation::{NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::{Move, NULL_MOVE};
 use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::Ntype::Exact;
@@ -89,6 +89,7 @@ impl SearchAlgorithm for Negamax {
 pub struct NegamaxTT {
     ttable: TTable,
     killer_table: [[Move; 3]; 64],
+    history_table: [[i16; 64]; 64],
     age: u8,
     nodes_searched: u64,
 }
@@ -100,7 +101,8 @@ impl NegamaxTT {
             ttable: TTable::new(ttsize),
             age: 0,
             nodes_searched: 0,
-            killer_table: [[NULL_MOVE; 3]; 64]
+            killer_table: [[NULL_MOVE; 3]; 64],
+            history_table: [[0i16; 64]; 64],
         }
     }
 
@@ -113,6 +115,13 @@ impl NegamaxTT {
         self.killer_table[ply][2] = self.killer_table[ply][1];
         self.killer_table[ply][1] = self.killer_table[ply][0];
         self.killer_table[ply][0] = m;
+    }
+
+    #[inline(always)]
+    pub fn append_history_move(&mut self, m: Move, bonus: i16) {
+        let entry = &mut self.history_table[m.from().index()][m.to().index()];
+        let result = AdvancedSorting::HISTORY_MIN.max(*entry + bonus).min(AdvancedSorting::HISTORY_MAX);
+        *entry = result;
     }
 
     pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
@@ -152,11 +161,10 @@ impl NegamaxTT {
             alpha = stand_part;
         }
 
-        let mut num_moves_executed = 0;
+        
         let captures = AdvancedSorting::sort_only_captures(board, tt_move);
         for &m in captures.as_slice() {
             if board.make_pl_move::<true>(m) {
-                num_moves_executed += 1;
                 let score = - self.quiesence_search(board, -beta, -alpha);
                 board.unmake_pl_move(m);
                 if score >= beta { return beta; }
@@ -164,9 +172,6 @@ impl NegamaxTT {
             }
         } 
         
-        if num_moves_executed == 0 {
-            return board.result(0);
-        }
         
         alpha
     }
@@ -174,26 +179,39 @@ impl NegamaxTT {
     pub fn negamax(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult> {
         self.nodes_searched = 0;
         let ply = 0;
-        let mut best_val = NEG_INFINITY;
         let mut alpha = NEG_INFINITY;
+        let beta = POSITIVE_INFINITY;
+
 
         let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
+            if entry.depth >= depth {
+
+                if entry.ntype == Ntype::Exact {
+                    return Some(SearchResult {
+                        best_move: entry.best_move,
+                        evaluation: entry.score,
+                        nodes_searched: self.nodes_searched,
+                        depth: depth,
+                    });
+                }
+
+            }
             tt_move = entry.best_move;
         }
 
         let mut sorter = AdvancedSorting::new(tt_move);
-        let ntype = Ntype::Upper;
+        let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
-        while let Some(m) = sorter.next(board, &self.killer_table[ply]) {
+        while let Some(m) = sorter.next(board, &self.killer_table[ply], &self.history_table) {
             if board.make_pl_move::<true>(m) {
-                let value = -self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha, ply+1);
+                let value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply+1);
 
                 board.unmake_pl_move(m);
-                if value > best_val {
+                if value > alpha {
                     best_move = m;
-                    best_val = value;
-                    alpha = best_val;
+                    alpha = value;
+                    ntype = Ntype::Exact;
                 }
             }
         }
@@ -233,7 +251,7 @@ impl NegamaxTT {
         if best_move != NULL_MOVE {
             return Some(SearchResult {
                 best_move: best_move,
-                evaluation: best_val,
+                evaluation: alpha,
                 nodes_searched: self.nodes_searched,
                 depth: depth,
             });
@@ -278,7 +296,7 @@ impl NegamaxTT {
         let mut best_move = NULL_MOVE;
         let mut num_moves = 0;
         let mut sorter = AdvancedSorting::new(tt_move);
-        while let Some(m) = sorter.next(board, &self.killer_table[ply]) {
+        while let Some(m) = sorter.next(board, &self.killer_table[ply], &self.history_table) {
             if board.make_pl_move::<true>(m) {
                 num_moves += 1;
                 let new_eval = -self.negamax_p(board, depth - 1, -beta, -alpha, ply+1);
@@ -292,8 +310,16 @@ impl NegamaxTT {
                         ntype: Ntype::Lower,
                         age: self.age,
                     });
-                    if m.is_quiet() {self.append_killer_move(ply, m)}
+                    if m.is_quiet() {
+                        self.append_killer_move(ply, m);
+                        self.append_history_move(m, (depth*depth) as i16);
+                    }
                     return beta;
+                }
+                else {
+                    if m.is_quiet() {
+                        self.append_history_move(m, -(300*depth as i16 - 250));
+                    }
                 }
                 if new_eval > alpha {
                     alpha = new_eval;

@@ -44,9 +44,12 @@ pub struct AdvancedSorting {
 }
 
 impl AdvancedSorting {
-    const HASH_M_VAL: i16 = 1000;
-    const PIECE_VALS: [i16; 7] = [1,2,3,4,5,6,0];
-    const MAX_PIECE_VAL: i16 = 6;
+    pub const HASH_M_VAL: i16 = 1000;
+    pub const KILLER_MOVE_BONUS: i16 = 15000;
+    pub const HISTORY_MAX: i16 = 14000;
+    pub const HISTORY_MIN: i16 = - Self::HISTORY_MAX;
+    pub const PIECE_VALS: [i16; 7] = [1,2,3,4,5,6,0];
+    pub const MAX_PIECE_VAL: i16 = 6;
 
     pub fn new(hash_move: Move) -> Self {
         Self { 
@@ -62,7 +65,7 @@ impl AdvancedSorting {
 
 
    #[inline(always)]
-    pub fn next(&mut self, board: &Board, killer_table: &[Move; 3]) -> Option<Move> {
+    pub fn next(&mut self, board: &Board, killer_table: &[Move; 3], history_table: &[[i16; 64]; 64]) -> Option<Move> {
         loop {
             match self.stage {
                 MoveGenStage::HashMove => {
@@ -93,7 +96,7 @@ impl AdvancedSorting {
                 
                 MoveGenStage::GenerateQuiets => {
 
-                    self.score_quiets(board, killer_table);
+                    self.score_quiets(board, killer_table, history_table);
                     self.stage = MoveGenStage::YieldQuiets;
                 }
                 
@@ -145,16 +148,14 @@ impl AdvancedSorting {
     }
 
     #[inline(always)]
-    pub fn score_quiets(&mut self, board: &Board, killer_table: &[Move; 3]) {
+    pub fn score_quiets(&mut self, board: &Board, killer_table: &[Move; 3], history: &[[i16; 64]; 64]) {
         let mut moves_evaluated = EvaluatedMoveList::new();
-
-        let mut num_quiets = 0;
         for m in board.generate_quiets().as_slice().iter() {
-            num_quiets += 1; 
             let mut value = 0;
             if killer_table.contains(m) {
-                value += 1;
+                value += Self::HASH_M_VAL;
             }
+            value += history[m.from().index()][m.to().index()];
             moves_evaluated.push(*m, value);
         }
         self.quiets = moves_evaluated;
@@ -263,7 +264,7 @@ mod test {
     fn insert_empty_moves() {
         let mut sorter = AdvancedSorting::new(NULL_MOVE);
         let board = Board::from_fen("6k1/8/6K1/8/8/8/8/1R6 w - - 0 1").unwrap();
-        let m = sorter.next(&board, &[NULL_MOVE, NULL_MOVE, NULL_MOVE]);
+        let m = sorter.next(&board, &[NULL_MOVE, NULL_MOVE, NULL_MOVE], &[[0i16; 64]; 64]);
         assert!(m.is_some(), "No moves found");
     }
 }

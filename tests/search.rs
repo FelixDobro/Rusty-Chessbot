@@ -36,10 +36,15 @@ fn test_hash_table() {
     search.search(&mut board, &SearchLimits::depth(4));
     board.make_pl_move_from_string::<true>("f2f1");
 
-    
+    let first_search = search.search(&mut board, &SearchLimits::depth(5)).unwrap();
+    let first_search_val = first_search.evaluation;
     let first_search_res = search.search(&mut board, &SearchLimits::depth(5)).unwrap().best_move;
     let second_search_res = search.search(&mut board, &SearchLimits::depth(4)).unwrap().best_move;
     let mate_in_1 = Move::from_string("e3e1", &board).unwrap();
+    board.print();
+    println!("{}", first_search_res);
+    println!("{}", first_search_val);
+    println!("{}", second_search_res);
 
     assert_eq!(first_search_res, mate_in_1, "first search oversaw mate in 1");
     assert_eq!(second_search_res, mate_in_1, "second search oversaw mate in 1");
