@@ -181,8 +181,8 @@ pub struct TTable {
 impl TTable {
 
     pub fn new(size: usize) -> Self {
-
-        TTable { table: vec![Bucket::empty(); size].into_boxed_slice(), size:size }
+        let two_power_size = size.next_power_of_two();
+        TTable { table: vec![Bucket::empty(); two_power_size].into_boxed_slice(), size:two_power_size }
     }
 
     pub fn insert(&mut self, entry: TTableEntry) {

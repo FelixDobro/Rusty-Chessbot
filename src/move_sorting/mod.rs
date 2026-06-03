@@ -65,7 +65,7 @@ impl<const N: usize> EvaluatedMoveList<N> {
         debug_assert!(index < self.count);
         let array_ptr: *mut (Move, i16) = self.moves.as_mut_ptr() as *mut (Move, i16);
         unsafe {
-            let target_ptr = array_ptr.add(self.count);
+            let target_ptr = array_ptr.add(index);
             target_ptr.write(item);
         }
     }
@@ -99,20 +99,12 @@ impl<const N: usize> EvaluatedMoveList<N> {
         Some(best_item.0)
     }
 
-    #[inline(always)]
-    pub fn as_slice(&self) -> &[Move] {
-        unsafe {
-            let array_ptr = self.moves.as_ptr() as *const Move;
-            std::slice::from_raw_parts(array_ptr, self.count)
-        }
-    }
-
     pub fn print_list(&self) {
-        for m in self.as_slice() {
-            println!("{}", m)
+        for i in 0..self.count {
+            println!("{}", self.get_item(i).0);
         }
     }
-
+    
     #[inline(always)]
     pub fn size(&self) -> usize {
         self.count

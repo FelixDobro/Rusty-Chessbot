@@ -1,6 +1,6 @@
 use crate::chess::board::Board;
 use crate::chess::board::evaluation::{NEG_INFINITY, POSITIVE_INFINITY};
-use crate::chess::chess_move::{Move, NULL_MOVE};
+use crate::chess::chess_move::{Move, MoveList, NULL_MOVE, MOVE_GEN_SIZE};
 use crate::chess::constants::Color;
 use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::Ntype::Exact;
@@ -119,11 +119,22 @@ impl NegamaxTT {
     }
 
     #[inline(always)]
-    pub fn append_history_move(&mut self, m: Move, bonus: i16, turn: Color) {
+    pub fn score_history_move(&mut self, m: Move, bonus: i16, turn: Color) {
         let clamped_bonus = AdvancedSorting::HISTORY_MIN.max(bonus).min(AdvancedSorting::HISTORY_MAX);
         self.history_table[turn.index()][m.from().index()][m.to().index()] += 
         clamped_bonus - self.history_table[turn.index()][m.from().index()][m.to().index()] * clamped_bonus.abs() / AdvancedSorting::HISTORY_MAX;
     }
+
+    #[inline(always)]
+    pub fn punish_quiets(&mut self, moves: &MoveList<MOVE_GEN_SIZE>, depth: u8, turn: Color) {
+        let bonus = -(300 * (depth as i16) - 250);
+        for &m in moves.as_slice() {
+            if m.is_quiet() {
+                self.score_history_move(m, bonus, turn);
+            }
+        }
+    }
+
 
     pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
         self.nodes_searched += 1;
@@ -204,6 +215,7 @@ impl NegamaxTT {
         let mut sorter = AdvancedSorting::new(tt_move);
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
+
         while let Some(m) = sorter.next(board, &self.killer_table[ply], &self.history_table) {
             if board.make_pl_move::<true>(m) {
                 let value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply+1);
@@ -295,11 +307,12 @@ impl NegamaxTT {
 
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
-        let mut num_moves = 0;
         let mut sorter = AdvancedSorting::new(tt_move);
+        let mut moves_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
+        let current_turn = board.get_turn();
         while let Some(m) = sorter.next(board, &self.killer_table[ply], &self.history_table) {
             if board.make_pl_move::<true>(m) {
-                num_moves += 1;
+                moves_played.push(m);
                 let new_eval = -self.negamax_p(board, depth - 1, -beta, -alpha, ply+1);
                 board.unmake_pl_move(m);
                 if new_eval >= beta {
@@ -311,9 +324,10 @@ impl NegamaxTT {
                         ntype: Ntype::Lower,
                         age: self.age,
                     });
+                    self.punish_quiets(&moves_played, depth, current_turn);
                     if m.is_quiet() {
                         self.append_killer_move(ply, m);
-                        self.append_history_move(m, (depth*depth) as i16, board.get_turn());
+                        self.score_history_move(m, (depth*depth) as i16, current_turn);
                     }
                     return beta;
                 }
@@ -325,7 +339,7 @@ impl NegamaxTT {
             }
         }
 
-        if num_moves == 0 {
+        if moves_played.size() == 0 {
             let res = board.result();
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),

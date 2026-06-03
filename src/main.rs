@@ -64,7 +64,7 @@ fn perft(board: &mut Board, depth: u8, move_list: &mut MoveList<256>) -> usize {
 
 fn main() -> Result<(), Box<dyn Error>> {
     
-    let mut negamax = NegamaxTT::new(2u64.pow(23) as usize);
+    let mut negamax = NegamaxTT::new(2u64.pow(25) as usize);
     let mut search = IDSearch::new(negamax);
     // let mut search = Negamax::new();
     let mut mangager = UCIManager::new(Box::new(search));

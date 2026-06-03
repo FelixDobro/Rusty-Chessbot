@@ -46,7 +46,7 @@ pub struct AdvancedSorting {
 impl AdvancedSorting {
     pub const HASH_M_VAL: i16 = 1000;
     pub const KILLER_MOVE_BONUS: i16 = 15000;
-    pub const HISTORY_MAX: i16 = 14000;
+    pub const HISTORY_MAX: i16 = 100;
     pub const HISTORY_MIN: i16 = - Self::HISTORY_MAX;
     pub const PIECE_VALS: [i16; 7] = [1,2,3,4,5,6,0];
     pub const MAX_PIECE_VAL: i16 = 6;
