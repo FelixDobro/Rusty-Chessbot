@@ -5,67 +5,21 @@ mod search;
 mod move_sorting;
 mod uci;
 
-use core::time;
+
 use std::error::Error;
-use std::sync::LazyLock;
-use crate::chess::board::Board;
-use crate::chess::chess_move::{*};
-use crate::chess::square::Square;
-use crate::chess::constants::{*};
-use crate::chess::board::hash::{*};
-use crate::move_sorting::{NumericSorting};
-use crate::search::SearchAlgorithm;
 use crate::search::ids::IDSearch;
 use crate::uci::UCIManager;
-use crate::chess::board::bitboard;
 use crate::search::simple_search::{NegamaxTT};
-use crate::chess::board::bitboard::EMPTY;
-use crate::search::simple_search::Negamax;
-use rayon::prelude::*;
 
 
-use std::time::Instant;
-
-pub fn init_lazylocks() {
-    bitboard::init_lazylocks();
-}
-
-#[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{_pext_u64, _pdep_u64};
-
-
-
-fn perft(board: &mut Board, depth: u8, move_list: &mut MoveList<256>) -> usize {
-
-    if depth == 0 {
-        return 1; 
-    }
-
-    let mut total_nodes: usize = 0;
-    
-    let moves = board.generate_pseudolegals();
-    
-    for &m in moves.as_slice() {
-        if board.make_pl_move::<true>(m) {
-            move_list.push(m);
-            move_list.print_list();
-            println!();
-            total_nodes += perft(board, depth - 1, move_list);
-            move_list.pop();
-            board.unmake_pl_move(m);
-        }
-    }
-
-    total_nodes
-}
 
 
 
 
 fn main() -> Result<(), Box<dyn Error>> {
     
-    let mut negamax = NegamaxTT::new(2u64.pow(25) as usize);
-    let mut search = IDSearch::new(negamax);
+    let negamax = NegamaxTT::new(2u64.pow(25) as usize);
+    let search = IDSearch::new(negamax);
     // let mut search = Negamax::new();
     let mut mangager = UCIManager::new(Box::new(search));
     mangager.start_protocol()?;

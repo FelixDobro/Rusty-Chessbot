@@ -63,33 +63,31 @@ impl UCIManager
                     }
 
                     "position" => {
-                        let next_token = tokens.next();
-                        match next_token {
-                            Some("fen") => {
+                        while let Some(next_token) = tokens.next() {
+                            match next_token {
+                            "fen" => {
                                 let fen_parts: Vec<&str> = tokens.by_ref().take(6).collect();
                                 let fen = fen_parts.join(" ");
                                 if let Ok(value) = Board::from_fen(&fen) {
                                     self.board = value;
                                 }
-                                let move_token = tokens.next();
-                                match move_token {
-                                    Some("moves") => {
-                                        while let Some(token) = tokens.next() {
-                                            let m = Move::from_string(token, &self.board)?;
-                                          
-                                            self.board.make_pl_move::<true>(m);
-                                            
-                                        }
-                                    }
-                                    _ => {}
-                                };
-                            }
+                            },
 
-                            Some("startpos") => {
+                            "moves" => {
+                                while let Some(token) = tokens.next() {
+                                    let m = Move::from_string(token, &self.board)?;
+                                    
+                                    self.board.make_pl_move::<true>(m);
+                                    
+                                }
+                            },
+
+                            "startpos" => {
                                 self.board = Board::default();
                             }
                             _ => {}
                         };
+                        }
                     },
                     "go" => {
                     

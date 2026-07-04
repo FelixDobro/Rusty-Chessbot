@@ -3,13 +3,6 @@ use std::{collections::btree_map::Entry, mem::MaybeUninit};
 use crate::chess::chess_move::{MOVE_GEN_SIZE, Move, MoveList};
 
 pub mod advanced_sorting;
-pub struct NumericSorting;
-impl NumericSorting {
-    pub fn move_iter(move_list: &mut MoveList<MOVE_GEN_SIZE>) -> impl Iterator<Item = &Move> {
-        move_list.as_mut_slice().sort_unstable_by(|a, b| b.cmp(a));
-        move_list.as_slice().iter()
-    }
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MoveGenStage {
