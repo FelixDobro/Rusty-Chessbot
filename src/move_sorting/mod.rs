@@ -1,19 +1,7 @@
-use std::{collections::btree_map::Entry, mem::MaybeUninit};
-
-use crate::chess::chess_move::{MOVE_GEN_SIZE, Move, MoveList};
-
+use std::{mem::MaybeUninit};
+use crate::chess::chess_move::{Move};
 pub mod advanced_sorting;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum MoveGenStage {
-    HashMove,
-    GenerateCaptures,
-    YieldGoodCaptures,
-    GenerateQuiets,
-    YieldQuiets,
-    YieldBadCaptures,
-    Done,
-}
 
 #[derive(Debug, Clone)]
 pub struct EvaluatedMoveList<const N: usize> {
@@ -92,12 +80,14 @@ impl<const N: usize> EvaluatedMoveList<N> {
         Some(best_item.0)
     }
 
+    #[allow(dead_code)]
     pub fn print_list(&self) {
         for i in 0..self.count {
             println!("{}", self.get_item(i).0);
         }
     }
     
+    #[allow(dead_code)]
     #[inline(always)]
     pub fn size(&self) -> usize {
         self.count
@@ -108,7 +98,7 @@ impl<const N: usize> EvaluatedMoveList<N> {
 
 #[cfg(test)]
 mod test {
-    use crate::{chess::{board::Board, chess_move::{Move, NULL_MOVE}, square::Square}, move_sorting::{EvaluatedMoveList, advanced_sorting::AdvancedSorting}};
+    use crate::{chess::{chess_move::{Move}, square::Square}, move_sorting::{EvaluatedMoveList}};
     use crate::chess::chess_move::MOVE_GEN_SIZE;
 
     #[test]

@@ -12,10 +12,6 @@ use crate::uci::UCIManager;
 use crate::search::simple_search::{NegamaxTT};
 
 
-
-
-
-
 fn main() -> Result<(), Box<dyn Error>> {
     
     let negamax = NegamaxTT::new(2u64.pow(25) as usize);

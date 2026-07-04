@@ -1,6 +1,6 @@
 
 use crate::chess::board::Board;
-use crate::chess::board::bitboard::{Bitboard, EMPTY as Empty_BB};
+use crate::chess::board::bitboard::{EMPTY as Empty_BB};
 use crate::chess::board::evaluation::{*};
 use crate::chess::chess_move::MoveList;
 use crate::chess::chess_move::Move;
@@ -153,7 +153,7 @@ impl AdvancedSorting {
         for m in board.generate_quiets().as_slice().iter() {
             let mut value = 0;
             if killer_table.contains(m) {
-                value += Self::HASH_M_VAL;
+                value += Self::KILLER_MOVE_BONUS;
             }
             value += history[board.get_turn().index()][m.from().index()][m.to().index()];
             moves_evaluated.push(*m, value);

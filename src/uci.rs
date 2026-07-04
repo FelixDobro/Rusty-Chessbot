@@ -143,7 +143,7 @@ impl UCIManager
                                 binc.unwrap_or(5000)
                             };
 
-                            // Simples Time Management: Nimm 1/40 der Restzeit für diesen Zug
+
                             let move_time_budget = (remaining_time_ms / 20) + (increment / 2); 
                             
                             SearchLimits {

@@ -7,11 +7,12 @@ use crate::search::Ntype::Exact;
 use crate::search::{Ntype, SearchAlgorithm, SearchLimits, SearchResult, TTable, TTableEntry};
 
 
-
+#[allow(dead_code)]
 pub struct Negamax {
     nodes_searched: u64,
 }
 
+#[allow(dead_code)]
 impl Negamax {
 
     pub fn new() -> Self {
