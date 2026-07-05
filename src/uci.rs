@@ -3,7 +3,7 @@ use crate::search::SearchLimits;
 
 use crate::chess::board::Board;
 use crate::chess::chess_move::Move;
-use crate::search::SearchAlgorithm;
+use crate::search::ids::IDSearch;
 
 use std::{
     error::Error,
@@ -14,14 +14,14 @@ use std::{
 
 pub struct UCIManager<>
 {   
-    search: Box<dyn SearchAlgorithm>,
+    search: IDSearch,
     board: Board,
     std_in: Stdin,
 }
 
 impl UCIManager
 {
-    pub fn new(search: Box<dyn SearchAlgorithm>) -> UCIManager
+    pub fn new(search: IDSearch) -> UCIManager
     {
         UCIManager {
             search: search,
@@ -143,12 +143,9 @@ impl UCIManager
                                 binc.unwrap_or(5000)
                             };
 
-
-                            let move_time_budget = (remaining_time_ms / 20) + (increment / 2); 
-                            
                             SearchLimits {
                                 max_depth: None,
-                                max_time: Some(Duration::from_millis(move_time_budget)),
+                                base_inc: Some((remaining_time_ms, increment)),
                                 max_nodes: None,
                                 infinite: false,
                             }

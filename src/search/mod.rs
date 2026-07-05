@@ -1,21 +1,19 @@
 pub mod simple_search;
 pub mod ids;
-use crate::chess::board::Board;
 use crate::search::Ntype::Exact;
-use std::time::Duration;
 
 
 use crate::chess::chess_move::NULL_MOVE;
-use crate::chess::square::Square;
 use crate::{chess::chess_move::Move};
 
 
 pub const MAX_SEARCH_DEPTH: u8 = 64;
+pub const GLOBAL_MAX_SEARCH_DURATION_H: u64 = 100000000u64; 
 
 #[derive(Default, Clone, Debug)]
 pub struct SearchLimits {
     pub max_depth: Option<u8>,
-    pub max_time: Option<Duration>,
+    pub base_inc: Option<(u64, u64)>,
     pub max_nodes: Option<u64>,
     pub infinite: bool,
 }
@@ -29,9 +27,9 @@ impl SearchLimits {
         }
     }
 
-    pub fn time(ms: u64) -> Self {
+    pub fn time(base: u64, inc: u64) -> Self {
         Self {
-            max_time: Some(Duration::from_millis(ms)),
+            base_inc: Some((base, inc)),
             ..Default::default()
         }
     }
@@ -54,9 +52,7 @@ impl SearchResult {
 }
 
 
-pub trait SearchAlgorithm {
-    fn search(&mut self, board: &mut Board, limits: &SearchLimits) -> Option<SearchResult>;
-}
+
 
 
 #[repr(u8)]

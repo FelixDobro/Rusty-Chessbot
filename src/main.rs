@@ -16,8 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     let negamax = NegamaxTT::new(2u64.pow(25) as usize);
     let search = IDSearch::new(negamax);
-    // let mut search = Negamax::new();
-    let mut mangager = UCIManager::new(Box::new(search));
+    let mut mangager = UCIManager::new(search);
     mangager.start_protocol()?;
 
     // board.get_board().print();

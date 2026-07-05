@@ -1,9 +1,8 @@
-use std::thread::current;
-use std::time::{Duration, Instant};
 
+use std::time::{Duration, Instant};
 use crate::search::simple_search::NegamaxTT;
-use crate::search::{MAX_SEARCH_DEPTH, SearchAlgorithm, SearchLimits, SearchResult};
-use crate::chess::board::{self, Board};
+use crate::search::{GLOBAL_MAX_SEARCH_DURATION_H, MAX_SEARCH_DEPTH, SearchLimits, SearchResult};
+use crate::chess::board::{Board};
 
 
 
@@ -16,28 +15,27 @@ impl IDSearch {
         Self { search_algo: algo }
     }
 
-    pub fn timed_search(&mut self, board: &mut Board, search_time: Duration) -> Option<SearchResult>{
-        let total_time = Instant::now();
-        let mut last_nodes = 1;
+
+
+    pub fn timed_search(&mut self, board: &mut Board, base: u64, inc: u64) -> Option<SearchResult>{
+        let start_time = Instant::now();
+        
+        let soft_bound = base / 20 + inc / 2;
+        let hard_bound =  (0.3 * base as f32).min(2.0 * soft_bound as f32);
+        
+        let hard_duration = Duration::from_millis(hard_bound as u64);
+        let soft_bound = Duration::from_millis(soft_bound);
+
         self.search_algo.reset_killers();
         let mut best_res: Option<SearchResult> = None;
 
         for current_depth in 1..MAX_SEARCH_DEPTH {
-            let depth_start_time = Instant::now();
-            if let Some(result) = self.search_algo.search(board, &SearchLimits::depth(current_depth)) {
-                let depth_elapsed = depth_start_time.elapsed();
-                let total_elapsed = total_time.elapsed();
+            if start_time.elapsed() > soft_bound {
+                break
+            }
+            if let Some(result) = self.search_algo.negamax(board, current_depth,&start_time, &hard_duration ) {
+                best_res = Some(result)
 
-                let current_searched_nodes = result.nodes_searched;
-                let ebf = current_searched_nodes as f32 / 1.max(last_nodes) as f32; 
-
-                let predicted_time = depth_elapsed.mul_f32(ebf);
-                last_nodes = current_searched_nodes;
-                best_res = Some(result);
-
-                if total_elapsed + predicted_time > search_time {
-                    break;
-                }
             }
             else {
                 break
@@ -45,17 +43,21 @@ impl IDSearch {
         }
         best_res
     }
-}
 
-impl SearchAlgorithm for IDSearch {
+    pub fn depth_search(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult>{
+        self.search_algo.negamax(board, depth, &Instant::now(), &Duration::from_hours(GLOBAL_MAX_SEARCH_DURATION_H))
+    }
 
-    fn search(&mut self, board: &mut Board, limits: &SearchLimits) -> Option<SearchResult> {
+
+    pub fn search(&mut self, board: &mut Board, limits: &SearchLimits) -> Option<SearchResult> {
         if let Some(depth) = limits.max_depth {
-            return self.search_algo.search(board, limits);
+            return self.depth_search(board, depth)
         }
-        else if let Some(time) = limits.max_time {
-            return self.timed_search(board, time);
+        else if let Some((base, inc)) = limits.base_inc{
+            return self.timed_search(board, base, inc)
         }
         None
     }
 }
+
+
