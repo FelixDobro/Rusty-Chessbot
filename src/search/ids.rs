@@ -21,7 +21,7 @@ impl IDSearch {
         let start_time = Instant::now();
         
         let soft_bound = base / 20 + inc / 2;
-        let hard_bound =  (0.3 * base as f32).min(2.0 * soft_bound as f32);
+        let hard_bound =  (0.3 * base as f32 - 300.0).min(1.25 * soft_bound as f32);
         
         let hard_duration = Duration::from_millis(hard_bound as u64);
         let soft_bound = Duration::from_millis(soft_bound);

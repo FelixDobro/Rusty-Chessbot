@@ -7,7 +7,7 @@ use crate::search::ids::IDSearch;
 
 use std::{
     error::Error,
-    io::{Stdin,stdin}, time::Duration,
+    io::{Stdin,stdin}
 };
 
 

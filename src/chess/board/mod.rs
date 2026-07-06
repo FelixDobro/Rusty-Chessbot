@@ -806,6 +806,26 @@ impl Board {
         num_occurences > 2
     }
 
+    pub fn position_will_draw(&self) -> bool {
+        let halfmoves = self.halfmoves as u64;
+
+        if halfmoves > 99 {
+            return true;
+        }
+
+
+        let mut num_occurences = 0;
+        let current_hash = self.hash;
+
+        for &hash in self.positions.half_move_iter(halfmoves) {
+            if current_hash == hash {
+                num_occurences += 1
+            }
+        }
+
+        num_occurences > 1
+    }
+
 
 }
 
@@ -813,11 +833,11 @@ impl Board {
 #[cfg(test)]
 mod test {
 
-    use std::collections::btree_map::Entry::Occupied;
+   
 
 use crate::chess::board::bitboard::{Bitboard, EMPTY};
 use crate::chess::chess_move::Move;
-    use crate::chess::constants::{Side, WhiteSide};
+    use crate::chess::constants::{WhiteSide};
 use crate::chess::square::Square;
     use crate::chess::board::Board;
 

@@ -86,6 +86,11 @@ impl Negamax {
 
 
 
+
+
+
+
+
 pub struct NegamaxTT {
     ttable: TTable,
     killer_table: [[Move; 3]; 64],
@@ -145,7 +150,7 @@ impl NegamaxTT {
     pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
         self.nodes_searched += 1;
         self.timed_nodes += 1;
-        if board.can_claim_draw() {
+        if board.position_will_draw() {
             return 0
         }
         
@@ -296,7 +301,7 @@ impl NegamaxTT {
             }
             self.timed_nodes = 0
         }
-        if board.can_claim_draw() {
+        if board.position_will_draw() {
             return 0;
         }
         self.timed_nodes += 1;
