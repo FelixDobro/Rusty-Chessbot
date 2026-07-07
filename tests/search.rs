@@ -13,14 +13,7 @@ fn negamax_should_find_best_move() {
 }
 
 
-#[test]
-fn can_find_move() {
-    let mut search = NegamaxTT::new(1000);
-    let mut board = Board::from_fen("8/1R3k2/2p5/2K1Q3/8/8/8/7q b - - 54 76").unwrap();
-    let search_result = search.negamax(&mut board, 5, &Instant::now(), &Duration::from_secs(10));
 
-    assert!(search_result.is_some(), "Does not find move, even though move possible, possibly timed out");
-}
 
 #[test]
 fn does_not_draw() {

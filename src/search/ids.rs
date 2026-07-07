@@ -1,5 +1,6 @@
 
 use std::time::{Duration, Instant};
+use crate::chess::board::evaluation::{NEG_INFINITY, POSITIVE_INFINITY};
 use crate::search::simple_search::NegamaxTT;
 use crate::search::{GLOBAL_MAX_SEARCH_DURATION_H, MAX_SEARCH_DEPTH, SearchLimits, SearchResult};
 use crate::chess::board::{Board};
@@ -21,7 +22,7 @@ impl IDSearch {
         let start_time = Instant::now();
         
         let soft_bound = base / 20 + inc / 2;
-        let hard_bound =  (0.3 * base as f32 - 300.0).min(1.25 * soft_bound as f32);
+        let hard_bound =  (0.3 * base as f32 - 400.0).min(1.25 * soft_bound as f32);
         
         let hard_duration = Duration::from_millis(hard_bound as u64);
         let soft_bound = Duration::from_millis(soft_bound);
@@ -33,7 +34,10 @@ impl IDSearch {
             if start_time.elapsed() > soft_bound {
                 break
             }
-            if let Some(result) = self.search_algo.negamax(board, current_depth,&start_time, &hard_duration ) {
+
+            let last_val = best_res.as_ref().map_or(0, |res| res.evaluation);
+
+            if let Some(result) = self.search_algo.negamax(board, current_depth,&start_time, &hard_duration,25, 25, last_val) {
                 best_res = Some(result)
 
             }
@@ -45,7 +49,7 @@ impl IDSearch {
     }
 
     pub fn depth_search(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult>{
-        self.search_algo.negamax(board, depth, &Instant::now(), &Duration::from_hours(GLOBAL_MAX_SEARCH_DURATION_H))
+        self.search_algo.negamax(board, depth, &Instant::now(), &Duration::from_hours(GLOBAL_MAX_SEARCH_DURATION_H), POSITIVE_INFINITY, NEG_INFINITY, 0)
     }
 
 

@@ -1,12 +1,13 @@
+use std::i16;
 use std::time::{Duration, Instant};
 
 use crate::chess::board::Board;
-use crate::chess::board::evaluation::{CHECK_MATE, NEG_INFINITY, POSITIVE_INFINITY};
+use crate::chess::board::evaluation::{NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::{Move, MoveList, NULL_MOVE, MOVE_GEN_SIZE};
 use crate::chess::constants::Color;
 use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::Ntype::Exact;
-use crate::search::{Ntype, SearchLimits, SearchResult, TTable, TTableEntry};
+use crate::search::{Ntype, SearchResult, TTable, TTableEntry};
 
 
 #[allow(dead_code)]
@@ -86,29 +87,20 @@ impl Negamax {
 
 
 
+struct SearchInfo {
 
-
-
-
-
-pub struct NegamaxTT {
-    ttable: TTable,
     killer_table: [[Move; 3]; 64],
     history_table: [[[i16; 64]; 64]; 2],
     age: u8,
     nodes_searched: u64,
     timed_nodes: u64,
-    time_fail: bool
+    time_fail: bool,
 }
 
-impl NegamaxTT {
+impl SearchInfo {
 
-
-    const CHECK_TIME_NODES: u64 = 50000;
-
-    pub fn new(ttsize: usize) -> Self {
-        Self {
-            ttable: TTable::new(ttsize),
+    pub fn new() -> Self {
+        SearchInfo {
             age: 0,
             nodes_searched: 0,
             timed_nodes: 0,
@@ -118,6 +110,16 @@ impl NegamaxTT {
         }
     }
 
+
+
+
+    pub fn reset(&mut self) {
+        self.age = 0;
+        self.nodes_searched = 0;
+        self.timed_nodes = 0;
+        self.time_fail = false;
+    }
+ 
     pub fn reset_killers(&mut self) {
         self.killer_table = [[NULL_MOVE; 3]; 64];
     }
@@ -146,10 +148,65 @@ impl NegamaxTT {
         }
     }
 
+    #[inline(always)]
+    pub fn increment_nodes(&mut self) {
+        self.timed_nodes += 1;
+        self.nodes_searched += 1
+    }
+
+    #[inline(always)]
+    pub fn increase_age(&mut self) {
+        self.age = self.age.wrapping_add(1);
+    }
+
+    #[inline(always)]
+    pub fn time_failed(&mut self) {
+        self.time_fail = true
+    }
+
+    #[inline(always)]
+    pub fn reset_timed_nodes(&mut self) {
+        self.timed_nodes = 0
+    }
+
+
+}
+
+
+
+pub struct NegamaxTT {
+    ttable: TTable,
+    info: SearchInfo,
+}
+
+impl NegamaxTT {
+
+
+    const CHECK_TIME_NODES: u64 = 50000;
+
+    pub fn new(ttsize: usize) -> Self {
+        Self {
+            ttable: TTable::new(ttsize),
+            info: SearchInfo::new()
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_new_window(window: i16) -> i16 {
+        match window {
+            25 => 100,
+            _ => POSITIVE_INFINITY
+        }
+    }
+
+
+
+    pub fn reset_killers(&mut self) {
+        self.info.reset_killers();
+    }
 
     pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
-        self.nodes_searched += 1;
-        self.timed_nodes += 1;
+        self.info.increment_nodes();
         if board.position_will_draw() {
             return 0
         }
@@ -202,17 +259,24 @@ impl NegamaxTT {
 
     pub fn negamax(&mut self, 
         board: &mut Board, 
-        depth: u8, 
+        depth: u8,
         start_time: &Instant, 
-        allowed_duration: &Duration
+        allowed_duration: &Duration,
+        alpha_dec: i16,
+        beta_inc: i16,
+        last_val: i16,
+
+
     ) -> Option<SearchResult> {
 
-        self.timed_nodes = 0;
-        self.nodes_searched = 0;
-        self.time_fail = false;
+        self.info.reset();        
         let ply = 0;
-        let mut alpha = NEG_INFINITY;
-        let beta = POSITIVE_INFINITY;
+
+        let original_alpha = last_val.saturating_sub(alpha_dec).max(NEG_INFINITY);
+        let original_beta = last_val.saturating_add(beta_inc).min(POSITIVE_INFINITY);
+
+        let mut alpha = original_alpha;
+        let beta = original_beta;
 
 
         let mut tt_move = NULL_MOVE;
@@ -224,11 +288,11 @@ impl NegamaxTT {
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
 
-        while let Some(m) = sorter.next(board, &self.killer_table[ply], &self.history_table) {
+        while let Some(m) = sorter.next(board, &self.info.killer_table[ply], &self.info.history_table) {
             if board.make_pl_move::<true>(m) {
-                let value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply+1, start_time, allowed_duration);
+                let value = -self.negamax_p(board, depth - 1, - beta, - alpha, ply+1, start_time, allowed_duration);
                 board.unmake_pl_move(m);
-                if self.time_fail {
+                if self.info.time_fail {
                     return None;
                 }
 
@@ -237,11 +301,21 @@ impl NegamaxTT {
                     alpha = value;
                     ntype = Ntype::Exact;
                 }
-                if self.time_fail {return None}
+                if self.info.time_fail {return None}
+                if alpha >= beta {break;}
             }
         }
 
-        if self.nodes_searched == 0 {
+        if alpha <= original_alpha && alpha_dec < POSITIVE_INFINITY {
+            return self.negamax(board, depth, start_time, allowed_duration, Self::get_new_window(alpha_dec), beta_inc, last_val);
+        }
+
+        if alpha >= original_beta && beta_inc < POSITIVE_INFINITY {
+            return self.negamax(board, depth, start_time, allowed_duration, alpha_dec, Self::get_new_window(beta_inc), last_val);
+        }
+        
+
+        if self.info.nodes_searched == 0 {
             let res = board.result();
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
@@ -253,7 +327,7 @@ impl NegamaxTT {
                 depth: depth,
                 score: res,
                 ntype: Exact,
-                age: self.age,
+                age: self.info.age,
             });
             return None;
         }
@@ -268,16 +342,16 @@ impl NegamaxTT {
             depth: depth,
             score: alpha,
             ntype: ntype,
-            age: self.age,
+            age: self.info.age,
         });
 
-        self.age = self.age.wrapping_add(1);
+        self.info.increase_age();
 
         if best_move != NULL_MOVE {
             return Some(SearchResult {
                 best_move: best_move,
                 evaluation: alpha,
-                nodes_searched: self.nodes_searched,
+                nodes_searched: self.info.nodes_searched,
                 depth: depth,
             });
         }
@@ -294,18 +368,17 @@ impl NegamaxTT {
         allowed_duration: &Duration
     ) -> i16 {
         
-        if self.timed_nodes > Self::CHECK_TIME_NODES {
+        if self.info.timed_nodes > Self::CHECK_TIME_NODES {
             if start_time.elapsed() > * allowed_duration {
-                self.time_fail = true;
+                self.info.time_failed();
                 return 0
             }
-            self.timed_nodes = 0
+            self.info.reset_timed_nodes();
         }
         if board.position_will_draw() {
             return 0;
         }
-        self.timed_nodes += 1;
-        self.nodes_searched += 1;
+        self.info.increment_nodes();
         let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
             if entry.depth >= depth {
@@ -329,7 +402,7 @@ impl NegamaxTT {
         }
         
         if depth == 0 {
-            self.nodes_searched -= 1;
+            self.info.nodes_searched -= 1;
             return self.quiesence_search(board, alpha, beta);
         }
     
@@ -339,13 +412,13 @@ impl NegamaxTT {
         let mut sorter = AdvancedSorting::new(tt_move);
         let mut moves_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
         let current_turn = board.get_turn();
-        while let Some(m) = sorter.next(board, &self.killer_table[ply], &self.history_table) {
+        while let Some(m) = sorter.next(board, &self.info.killer_table[ply], &self.info.history_table) {
             if board.make_pl_move::<true>(m) {
                 moves_played.push(m);
                 let new_eval = -self.negamax_p(board, depth - 1, -beta, -alpha, ply+1, start_time, allowed_duration);
                 board.unmake_pl_move(m);
                 
-                if self.time_fail {
+                if self.info.time_fail {
                     return 0
                 }
 
@@ -357,12 +430,12 @@ impl NegamaxTT {
                         score: beta,
                         depth: depth,
                         ntype: Ntype::Lower,
-                        age: self.age,
+                        age: self.info.age,
                     });
-                    self.punish_quiets(&moves_played, depth, current_turn);
+                    self.info.punish_quiets(&moves_played, depth, current_turn);
                     if m.is_quiet() {
-                        self.append_killer_move(ply, m);
-                        self.score_history_move(m, (depth*depth) as i16, current_turn);
+                        self.info.append_killer_move(ply, m);
+                        self.info.score_history_move(m, (depth*depth) as i16, current_turn);
                     }
                     return beta;
                 }
@@ -386,7 +459,7 @@ impl NegamaxTT {
                 depth: depth,
                 score: res,
                 ntype: Exact,
-                age: self.age,
+                age: self.info.age,
             });
             return res;
         }
@@ -401,7 +474,7 @@ impl NegamaxTT {
             depth: depth,
             score: alpha,
             ntype: ntype,
-            age: self.age,
+            age: self.info.age,
         });
         alpha
     }
