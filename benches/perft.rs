@@ -1,10 +1,7 @@
-
 use chess_bot::chess::board::Board;
 use chess_bot::chess::board::bitboard::init_lazylocks;
 use criterion::BatchSize;
 use criterion::{Criterion, criterion_group};
-use rayon::prelude::*;
-
 
 fn perft(board: &mut Board, depth: u8) -> usize {
     if depth == 0 {
@@ -37,13 +34,12 @@ fn default_perft_depth_5(c: &mut Criterion) {
             || {
                 init_lazylocks();
                 Board::default()
-            },             
-            |mut board| perft(&mut board, 5), 
+            },
+            |mut board| perft(&mut board, 5),
             BatchSize::SmallInput,
         );
     });
 }
-
 
 fn default_perft_depth_6(c: &mut Criterion) {
     c.bench_function("default_perft_depth_6", |b| {
@@ -51,15 +47,12 @@ fn default_perft_depth_6(c: &mut Criterion) {
             || {
                 init_lazylocks();
                 Board::default()
-            },             
-            |mut board| perft(&mut board, 6), 
+            },
+            |mut board| perft(&mut board, 6),
             BatchSize::SmallInput,
         );
     });
 }
-
-
-
 
 criterion_group!(
     name = perft_bench;
