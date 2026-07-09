@@ -33,8 +33,7 @@ fn test_hash_vs_calculated() {
             .generate_pseudolegals()
             .as_slice()
             .iter()
-            .enumerate()
-            .for_each(|(i, &m)| {
+            .for_each(|&m| {
                 if board.make_pl_move::<false>(m) {
                     assert_eq!(
                         board.get_hash(),

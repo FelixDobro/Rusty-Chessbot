@@ -1,16 +1,17 @@
-pub mod simple_search;
 pub mod ids;
-use crate::search::Ntype::Exact;
+pub mod simple_search;
 
-
+use crate::chess::chess_move::Move;
 use crate::chess::chess_move::NULL_MOVE;
-use crate::{chess::chess_move::Move};
-
 
 pub const MAX_SEARCH_DEPTH: u8 = 64;
-pub const GLOBAL_MAX_SEARCH_DURATION_H: u64 = 100000000u64; 
+pub const GLOBAL_MAX_SEARCH_DURATION_H: u64 = 100000000u64;
+
+#[cfg(test)]
+use crate::search::Ntype::Exact;
 
 #[derive(Default, Clone, Debug)]
+#[allow(dead_code)]
 pub struct SearchLimits {
     pub max_depth: Option<u8>,
     pub base_inc: Option<(u64, u64)>,
@@ -19,48 +20,40 @@ pub struct SearchLimits {
 }
 
 impl SearchLimits {
-
     pub fn depth(d: u8) -> Self {
         Self {
             max_depth: Some(d),
             ..Default::default()
         }
     }
-
-    pub fn time(base: u64, inc: u64) -> Self {
-        Self {
-            base_inc: Some((base, inc)),
-            ..Default::default()
-        }
-    }
 }
-
 
 #[derive(Debug, PartialEq)]
 pub struct SearchResult {
     pub best_move: Move,
     pub evaluation: i16,
     pub nodes_searched: u64,
-    pub depth: u8
+    pub depth: u8,
 }
 
 impl SearchResult {
-
     pub fn print_info(&self) {
-        println!("{}, eval: {}, depth: {}, nodes: {} Mio", self.best_move, self.evaluation, self.depth, (self.nodes_searched as f32) / 1000000f32);
+        println!(
+            "{}, eval: {}, depth: {}, nodes: {} Mio",
+            self.best_move,
+            self.evaluation,
+            self.depth,
+            (self.nodes_searched as f32) / 1000000f32
+        );
     }
 }
-
-
-
-
 
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Ntype {
     Exact,
     Lower,
-    Upper
+    Upper,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -73,26 +66,27 @@ pub struct TTableEntry {
     pub age: u8,
 }
 
-
 impl TTableEntry {
     pub const fn empty() -> Self {
-        TTableEntry { 
-            hash: 0, 
-            best_move: NULL_MOVE, 
-            depth: 0, 
+        TTableEntry {
+            hash: 0,
+            best_move: NULL_MOVE,
+            depth: 0,
             score: 0,
             ntype: Ntype::Exact,
-            age: 0 
+            age: 0,
         }
     }
-    
+
+    #[cfg(test)]
     fn debug_entry(hash: u64, depth: u8, age: u8) -> Self {
-        TTableEntry { hash,
+        TTableEntry {
+            hash,
             best_move: NULL_MOVE,
             depth: depth,
-            score: 0, 
+            score: 0,
             ntype: Exact,
-            age 
+            age,
         }
     }
 }
@@ -100,12 +94,14 @@ impl TTableEntry {
 #[repr(align(64))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Bucket {
-    entries: [TTableEntry; 4]
+    entries: [TTableEntry; 4],
 }
 
 impl Bucket {
     pub const fn empty() -> Self {
-        Bucket { entries: [TTableEntry::empty(); 4] }
+        Bucket {
+            entries: [TTableEntry::empty(); 4],
+        }
     }
 
     #[inline(always)]
@@ -122,7 +118,7 @@ impl Bucket {
                 if new_entry.depth >= existing_entry.depth {
                     self.entries[i] = new_entry;
                 }
-                return
+                return;
             }
 
             if existing_entry.age != new_entry.age {
@@ -131,9 +127,7 @@ impl Bucket {
                     should_replace = true;
                     replace_index = i;
                 }
-            }
-            
-            else if existing_entry.depth < lowest_depth {
+            } else if existing_entry.depth < lowest_depth {
                 should_replace = true;
                 lowest_depth = existing_entry.depth;
                 replace_index = i;
@@ -154,6 +148,7 @@ impl Bucket {
         None
     }
 
+    #[cfg(test)]
     fn debug_print(&self) {
         for i in 0..4 {
             println!("Entry {}", i);
@@ -163,22 +158,22 @@ impl Bucket {
             println!("Age: {}", entry.age);
             println!();
         }
-
     }
-
 }
 
 #[repr(align(64))]
 pub struct TTable {
     table: Box<[Bucket]>,
-    size: usize
+    size: usize,
 }
 
 impl TTable {
-
     pub fn new(size: usize) -> Self {
         let two_power_size = size.next_power_of_two();
-        TTable { table: vec![Bucket::empty(); two_power_size].into_boxed_slice(), size:two_power_size }
+        TTable {
+            table: vec![Bucket::empty(); two_power_size].into_boxed_slice(),
+            size: two_power_size,
+        }
     }
 
     pub fn insert(&mut self, entry: TTableEntry) {
@@ -191,6 +186,7 @@ impl TTable {
         self.table[index].get(hash)
     }
 
+    #[cfg(test)]
     pub fn get_bucket(&self, hash: u64) -> Bucket {
         let index = hash as usize % self.size;
         self.table[index]
@@ -200,7 +196,10 @@ impl TTable {
 #[cfg(test)]
 mod test {
 
-    use crate::{chess::{board::Board, chess_move::Move}, search::{Ntype::Exact, TTable, TTableEntry}};
+    use crate::{
+        chess::board::Board,
+        search::{TTable, TTableEntry},
+    };
 
     #[test]
     fn insert_get() {
@@ -216,31 +215,21 @@ mod test {
     fn bucket() {
         let mut table = TTable::new(1);
         let mut board = Board::default();
-        let bucket_hash= board.get_hash();
-        let best_move =Move::from_string("e2e4", &board).unwrap();
+        let bucket_hash = board.get_hash();
 
         let entry = TTableEntry::debug_entry(bucket_hash, 10, 0);
 
         table.insert(entry);
         board.make_pl_move_from_string::<true>("e2e4");
-        table.insert(
-            TTableEntry::debug_entry(board.get_hash(), 8, 0)
-        );
+        table.insert(TTableEntry::debug_entry(board.get_hash(), 8, 0));
         board.make_pl_move_from_string::<true>("e7e5");
-        table.insert(
-            TTableEntry::debug_entry(board.get_hash(), 2, 7)
-        );
+        table.insert(TTableEntry::debug_entry(board.get_hash(), 2, 7));
         board.make_pl_move_from_string::<true>("g1f3");
-        table.insert(
-            TTableEntry::debug_entry(board.get_hash(), 9, 0)
-        );
+        table.insert(TTableEntry::debug_entry(board.get_hash(), 9, 0));
 
         board.make_pl_move_from_string::<true>("g8f6");
-        table.insert(
-            TTableEntry::debug_entry(board.get_hash(), 21, 7)
-        );
+        table.insert(TTableEntry::debug_entry(board.get_hash(), 21, 7));
 
         table.get_bucket(bucket_hash).debug_print();
-
     }
 }

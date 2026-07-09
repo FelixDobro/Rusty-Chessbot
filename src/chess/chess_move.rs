@@ -1,12 +1,13 @@
+use crate::chess::{
+    board::{Board, bitboard::Bitboard},
+    square::Square,
+};
 use core::fmt;
 use std::error::Error;
 use std::mem::MaybeUninit;
-use crate::chess::{board::{Board, bitboard::{self, Bitboard}}, square::Square};
-
 
 pub const MOVE_GEN_SIZE: usize = 256;
 pub const GAME_MOVES_SIZE: usize = 1024;
-
 
 pub const NULL_MOVE: Move = Move::new(Square::A1, Square::A1, 0);
 
@@ -42,33 +43,30 @@ impl Move {
         Self(from_u | (to_u << 6) | (flags << 12))
     }
 
-
     #[inline(always)]
     pub fn from_string(m: &str, game: &Board) -> Result<Move, Box<dyn Error>> {
         game.qualify_move(m)
     }
-
-
 
     #[inline(always)]
     pub fn from(self) -> Square {
         Square::from_u16(self.0 & Move::FROM_MASK)
     }
 
-     #[inline(always)]
+    #[inline(always)]
     pub fn to_string(self) -> String {
         let uci_move = self.from().to_string() + &self.to().to_string();
-        
+
         let addon = match self.flags() {
-                Self::PROMO_CAP_QUEEN => "q",
-                Self::PROMO_QUEEN => "q",
-                Self::PROMO_CAP_KNIGHT => "n",
-                Self::PROMO_KNIGHT => "n",
-                Self::PROMO_CAP_BISHOP => "b",
-                Self::PROMO_BISHOP => "b",
-                Self::PROMO_CAP_ROOK => "r",
-                Self::PROMO_ROOK => "r",
-                _ => ""
+            Self::PROMO_CAP_QUEEN => "q",
+            Self::PROMO_QUEEN => "q",
+            Self::PROMO_CAP_KNIGHT => "n",
+            Self::PROMO_KNIGHT => "n",
+            Self::PROMO_CAP_BISHOP => "b",
+            Self::PROMO_BISHOP => "b",
+            Self::PROMO_CAP_ROOK => "r",
+            Self::PROMO_ROOK => "r",
+            _ => "",
         };
         uci_move + addon
     }
@@ -83,7 +81,6 @@ impl Move {
         (self.0 & Move::FLAGMASK) >> 12
     }
 
-
     #[inline(always)]
     pub fn split(self) -> (Square, Square, Bitboard, Bitboard) {
         let from = self.from();
@@ -93,15 +90,14 @@ impl Move {
         (from, to, from_board, to_board)
     }
 
-
     #[inline(always)]
     pub fn is_quiet(self) -> bool {
-        self.flags() == 0 
+        self.flags() == 0
     }
 
     #[inline(always)]
     pub fn is_capture(self) -> bool {
-        (self.flags() & 4) != 0 
+        (self.flags() & 4) != 0
     }
 
     #[inline(always)]
@@ -123,12 +119,9 @@ impl Move {
     pub fn get_castle_idx(&self) -> usize {
         self.flags().trailing_zeros() as usize
     }
-
 }
 
-
 impl fmt::Display for Move {
-
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}{} {}", self.from(), self.to(), self.flags())
     }
@@ -141,24 +134,23 @@ pub struct MoveList<const N: usize> {
 }
 
 impl<const N: usize> MoveList<N> {
-    
     pub fn new() -> Self {
         Self {
             moves: MaybeUninit::uninit(),
-            count: 0 
+            count: 0,
         }
     }
 
     #[inline(always)]
     pub fn push(&mut self, m: Move) {
         let array_ptr = self.moves.as_mut_ptr() as *mut Move;
-    
+
         unsafe {
             let target_ptr = array_ptr.add(self.count);
             target_ptr.write(m);
         }
         self.count += 1;
-    } 
+    }
 
     #[inline(always)]
     pub fn pop(&mut self) {
@@ -166,7 +158,10 @@ impl<const N: usize> MoveList<N> {
     }
 
     pub fn from_slice(moves: [Move; N], size: usize) -> Self {
-        Self { moves: MaybeUninit::new(moves), count: size }
+        Self {
+            moves: MaybeUninit::new(moves),
+            count: size,
+        }
     }
 
     #[inline(always)]
@@ -190,10 +185,9 @@ impl<const N: usize> MoveList<N> {
             println!("{}", m)
         }
     }
-    
+
     #[inline(always)]
     pub fn size(&self) -> usize {
         self.count
     }
 }
-

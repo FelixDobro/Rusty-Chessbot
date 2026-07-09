@@ -1,35 +1,41 @@
-use std::sync::LazyLock;
 use crate::chess::board::Board;
-use crate::chess::constants::{BlackSide, Color, Piece, Side, WhiteSide};
-use crate::chess::constants::Piece::{*};
 use crate::chess::board::bitboard::EMPTY as EMPTY_BB;
+use crate::chess::constants::Piece::*;
+use crate::chess::constants::{BlackSide, Color, Piece, Side, WhiteSide};
 use crate::chess::square::Square;
+use std::sync::LazyLock;
 
 pub const CHECK_MATE: i16 = i16::MIN + 100;
 pub const NEG_INFINITY: i16 = i16::MIN + 2;
-pub const POSITIVE_INFINITY: i16 = - NEG_INFINITY;
+pub const POSITIVE_INFINITY: i16 = -NEG_INFINITY;
 
 impl Board {
-
     pub fn calc_phase(&self) -> i16 {
         let mut val = 0;
 
-        val += 1.min(self.piece_bb[Queen.index() + WhiteSide::OFFSET].count_ones()) as i16 * PHASE_VALUES[Queen.index()];
-        val += 2.min(self.piece_bb[Bishop.index() + WhiteSide::OFFSET].count_ones())as i16 * PHASE_VALUES[Bishop.index()];
-        val += 2.min(self.piece_bb[Rook.index() + WhiteSide::OFFSET].count_ones())as i16 * PHASE_VALUES[Rook.index()];
-        val += 2.min(self.piece_bb[Knight.index() + WhiteSide::OFFSET].count_ones())as i16 * PHASE_VALUES[Knight.index()];
-        
-        val += 1.min(self.piece_bb[Queen.index() + BlackSide::OFFSET].count_ones()) as i16 * PHASE_VALUES[Queen.index()];
-        val += 2.min(self.piece_bb[Bishop.index() + BlackSide::OFFSET].count_ones())as i16 * PHASE_VALUES[Bishop.index()];
-        val += 2.min(self.piece_bb[Rook.index() + BlackSide::OFFSET].count_ones())as i16 * PHASE_VALUES[Rook.index()];
-        val += 2.min(self.piece_bb[Knight.index() + BlackSide::OFFSET].count_ones())as i16 * PHASE_VALUES[Knight.index()];
-        
+        val += 1.min(self.piece_bb[Queen.index() + WhiteSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Queen.index()];
+        val += 2.min(self.piece_bb[Bishop.index() + WhiteSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Bishop.index()];
+        val += 2.min(self.piece_bb[Rook.index() + WhiteSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Rook.index()];
+        val += 2.min(self.piece_bb[Knight.index() + WhiteSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Knight.index()];
+
+        val += 1.min(self.piece_bb[Queen.index() + BlackSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Queen.index()];
+        val += 2.min(self.piece_bb[Bishop.index() + BlackSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Bishop.index()];
+        val += 2.min(self.piece_bb[Rook.index() + BlackSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Rook.index()];
+        val += 2.min(self.piece_bb[Knight.index() + BlackSide::OFFSET].count_ones()) as i16
+            * PHASE_VALUES[Knight.index()];
+
         val
     }
 
     #[inline(always)]
     pub fn calculate_mg(&self) -> i16 {
-        
         let mut val = 0;
 
         for i in 0..6 {
@@ -47,16 +53,13 @@ impl Board {
                 val -= MG_VALUE[i];
                 piece_bb.pop_lsb();
             }
-            
         }
-        
+
         val
     }
 
-
     #[inline(always)]
     pub fn calculate_eg(&self) -> i16 {
-
         let mut val = 0;
 
         for i in 0..6 {
@@ -74,21 +77,19 @@ impl Board {
                 val -= EG_VALUE[i];
                 piece_bb.pop_lsb();
             }
-            
         }
 
         val
     }
 
     pub fn eval(&self) -> i16 {
-        let mask = -(self.turn.index() as i32); 
+        let mask = -(self.turn.index() as i32);
         let game_phase_i32 = self.game_phase as i32;
         let mg_i32 = self.eval_mg as i32;
         let eg_i32 = self.eval_eg as i32;
         let eval = (game_phase_i32 * mg_i32 + (24 - game_phase_i32) * eg_i32) / 24;
         ((eval ^ mask) - mask) as i16
     }
-
 
     #[inline(always)]
     pub fn add_eval<S: Side>(&mut self, p: Piece, s: Square) {
@@ -104,7 +105,6 @@ impl Board {
 
     #[inline(always)]
     pub fn rm_p_eval<S: Side>(&mut self, p: Piece) {
-        
         self.eval_mg -= MG_VALUE[p.index() + S::OFFSET];
         self.eval_eg -= EG_VALUE[p.index() + S::OFFSET];
     }
@@ -114,7 +114,7 @@ impl Board {
         self.eval_mg += MG_VALUE[p.index() + S::OFFSET];
         self.eval_eg += EG_VALUE[p.index() + S::OFFSET];
     }
-    
+
     #[inline(always)]
     pub fn result(&self) -> i16 {
         match self.turn {
@@ -135,13 +135,9 @@ impl Board {
             }
         }
     }
-
 }
 
-
-
-pub const PHASE_VALUES: [i16; 7] = [0, 1, 1, 2, 4, 0,0];
-
+pub const PHASE_VALUES: [i16; 7] = [0, 1, 1, 2, 4, 0, 0];
 
 #[inline(always)]
 const fn flip(i: usize) -> usize {
@@ -149,9 +145,8 @@ const fn flip(i: usize) -> usize {
 }
 
 pub static MG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
-
     let mut table = Box::new([[0i16; 64]; 12]);
-    
+
     table[Pawn.index() + BlackSide::OFFSET] = [
         0, 0, 0, 0, 0, 0, 0, 0, 98, 134, 61, 95, 68, 126, 34, -11, -6, 7, 26, 31, 65, 56, 25, -20,
         -14, 13, 6, 21, 23, 12, 17, -23, -27, -2, -5, 12, 17, 6, 10, -25, -26, -4, -4, -10, 3, 3,
@@ -164,7 +159,6 @@ pub static MG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
         12, 10, 19, 17, 25, -16, -29, -53, -12, -3, -1, 18, -14, -19, -105, -21, -58, -33, -17,
         -28, -19, -23,
     ];
-
 
     table[Bishop.index() + BlackSide::OFFSET] = [
         -29, 4, -82, -37, -25, -42, 7, -8, -26, 16, -18, -13, 30, 59, 18, -47, -16, 37, 43, 40, 35,
@@ -195,7 +189,6 @@ pub static MG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
         for sq in 0..64 {
             table[WhiteSide::OFFSET + piece][sq] = table[BlackSide::OFFSET + piece][flip(sq)]
         }
-        
     }
     table
 });
@@ -204,14 +197,9 @@ pub static EG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
     let mut table = Box::new([[0i16; 64]; 12]);
 
     table[Pawn.index() + BlackSide::OFFSET] = [
-        0,   0,   0,   0,   0,   0,   0,   0,
-        178, 173, 158, 134, 147, 132, 165, 187,
-        94, 100,  85,  67,  56,  53,  82,  84,
-        32,  24,  13,   5,  -2,   4,  17,  17,
-        13,   9,  -3,  -7,  -7,  -8,   3,  -1,
-        4,   7,  -6,   1,   0,  -5,  -1,  -8,
-        13,   8,   8,  10,  13,   0,   2,  -7,
-        0,   0,   0,   0,   0,   0,   0,   0,
+        0, 0, 0, 0, 0, 0, 0, 0, 178, 173, 158, 134, 147, 132, 165, 187, 94, 100, 85, 67, 56, 53,
+        82, 84, 32, 24, 13, 5, -2, 4, 17, 17, 13, 9, -3, -7, -7, -8, 3, -1, 4, 7, -6, 1, 0, -5, -1,
+        -8, 13, 8, 8, 10, 13, 0, 2, -7, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
     table[Knight.index() + BlackSide::OFFSET] = [
@@ -244,34 +232,50 @@ pub static EG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
         45, 44, 13, -8, 22, 24, 27, 26, 33, 26, 3, -18, -4, 21, 24, 27, 23, 9, -11, -19, -3, 11,
         21, 23, 16, 7, -9, -27, -11, 4, 13, 14, 4, -5, -17, -53, -34, -21, -11, -28, -14, -24, -43,
     ];
-    
+
     for piece in 0..6 {
         for sq in 0..64 {
             table[WhiteSide::OFFSET + piece][sq] = table[BlackSide::OFFSET + piece][flip(sq)]
         }
-        
     }
 
     table
 });
 
+pub const MG_VALUE: [i16; 12] = [82, 337, 365, 477, 1025, 0, -82, -337, -365, -477, -1025, -0];
+pub const EG_VALUE: [i16; 12] = [94, 281, 297, 512, 936, 0, -94, -281, -297, -512, -936, -0];
 
-pub const MG_VALUE: [i16; 12] = [82, 337, 365, 477, 1025,  0, -82, -337, -365, -477, -1025,  -0];
-pub const EG_VALUE: [i16; 12]= [94, 281, 297, 512,  936,  0, -94, -281, -297, -512, - 936, - 0];
-
-pub const SIMPLE_CP_VALUES: [i16; 12] = [100, 300, 330, 500, 900, 10000, - 100, - 300, -330, -500, -900, -10000];
-
+pub const SIMPLE_CP_VALUES: [i16; 12] = [
+    100, 300, 330, 500, 900, 10000, -100, -300, -330, -500, -900, -10000,
+];
 
 #[cfg(test)]
 mod test {
-    use crate::chess::{board::{Board, evaluation::{EG, EG_VALUE, MG}}, chess_move::Move, constants::{Color, Piece, Side}, square::Square};
-    use crate::chess::constants::Piece::{*};
+    use crate::chess::constants::Piece::*;
     use crate::chess::constants::{BlackSide, WhiteSide};
+    use crate::chess::{
+        board::{
+            Board,
+            evaluation::{EG, MG},
+        },
+        chess_move::Move,
+        constants::{Color, Piece, Side},
+        square::Square,
+    };
 
     fn compare_evals(initial_board: &Board, new_board: &Board) {
-        assert_eq!(initial_board.eval_mg, new_board.eval_mg, "Mg does not match");
-        assert_eq!(initial_board.eval_eg, new_board.eval_eg, "Eg does not match");
-        assert_eq!(initial_board.game_phase, new_board.game_phase, "Game phase does not match");
+        assert_eq!(
+            initial_board.eval_mg, new_board.eval_mg,
+            "Mg does not match"
+        );
+        assert_eq!(
+            initial_board.eval_eg, new_board.eval_eg,
+            "Eg does not match"
+        );
+        assert_eq!(
+            initial_board.game_phase, new_board.game_phase,
+            "Game phase does not match"
+        );
     }
 
     fn compare_table<S: Side>(p: Piece, s: Square, val: i16, mg: bool) {
@@ -279,57 +283,71 @@ mod test {
             assert_eq!(
                 MG[p.index() + S::OFFSET][s.index()],
                 val,
-                "Value at {:?} of {:?} in mg should be {} for {:?}", s, p, val, if S::INDEX == 0 {Color::White} else {Color::Black}
+                "Value at {:?} of {:?} in mg should be {} for {:?}",
+                s,
+                p,
+                val,
+                if S::INDEX == 0 {
+                    Color::White
+                } else {
+                    Color::Black
+                }
             )
-        }
-        else {
+        } else {
             assert_eq!(
                 EG[p.index() + S::OFFSET][s.index()],
                 val,
-                "Value at {:?} of {:?} in eg should be {} for {:?}", s, p, val, if S::INDEX == 0 {Color::White} else {Color::Black}
+                "Value at {:?} of {:?} in eg should be {} for {:?}",
+                s,
+                p,
+                val,
+                if S::INDEX == 0 {
+                    Color::White
+                } else {
+                    Color::Black
+                }
             )
         }
-        
     }
 
     #[test]
     fn test_mg_g6_white() {
-        compare_table::<WhiteSide>(Pawn, Square::G6,25, true);
-        compare_table::<WhiteSide>(Knight, Square::G6,73,true);
-        compare_table::<WhiteSide>(Bishop, Square::G6,37, true);
-        compare_table::<WhiteSide>(Rook, Square::G6,61, true);
+        compare_table::<WhiteSide>(Pawn, Square::G6, 25, true);
+        compare_table::<WhiteSide>(Knight, Square::G6, 73, true);
+        compare_table::<WhiteSide>(Bishop, Square::G6, 37, true);
+        compare_table::<WhiteSide>(Rook, Square::G6, 61, true);
         compare_table::<WhiteSide>(Queen, Square::G6, 47, true);
-        compare_table::<WhiteSide>(King, Square::G6,22, true);
+        compare_table::<WhiteSide>(King, Square::G6, 22, true);
     }
 
     #[test]
     fn test_mg_g6_black() {
-        compare_table::<BlackSide>(Pawn, Square::G6.flip(),25, true);
-        compare_table::<BlackSide>(Knight, Square::G6.flip(),73,true);
-        compare_table::<BlackSide>(Bishop, Square::G6.flip(),37, true);
-        compare_table::<BlackSide>(Rook, Square::G6.flip(),61, true);
+        compare_table::<BlackSide>(Pawn, Square::G6.flip(), 25, true);
+        compare_table::<BlackSide>(Knight, Square::G6.flip(), 73, true);
+        compare_table::<BlackSide>(Bishop, Square::G6.flip(), 37, true);
+        compare_table::<BlackSide>(Rook, Square::G6.flip(), 61, true);
         compare_table::<BlackSide>(Queen, Square::G6.flip(), 47, true);
-        compare_table::<BlackSide>(King, Square::G6.flip(),22, true);
+        compare_table::<BlackSide>(King, Square::G6.flip(), 22, true);
     }
 
     #[test]
     fn test_eg_g6_white() {
-        compare_table::<WhiteSide>(Pawn, Square::G6,82, false);
-        compare_table::<WhiteSide>(Knight, Square::G6,-19,false);
-        compare_table::<WhiteSide>(Bishop, Square::G6,0, false);
-        compare_table::<WhiteSide>(Rook, Square::G6,-5, false);
+        compare_table::<WhiteSide>(Pawn, Square::G6, 82, false);
+        compare_table::<WhiteSide>(Knight, Square::G6, -19, false);
+        compare_table::<WhiteSide>(Bishop, Square::G6, 0, false);
+        compare_table::<WhiteSide>(Rook, Square::G6, -5, false);
         compare_table::<WhiteSide>(Queen, Square::G6, 19, false);
-        compare_table::<WhiteSide>(King, Square::G6,44, false);
+        compare_table::<WhiteSide>(King, Square::G6, 44, false);
     }
 
     #[test]
     fn test_eg_g6_black() {
-        compare_table::<BlackSide>(Pawn, Square::G6.flip(),82, false);
-        compare_table::<BlackSide>(Knight, Square::G6.flip(),-19,false);
-        compare_table::<BlackSide>(Bishop, Square::G6.flip(),0, false);
-        compare_table::<BlackSide>(Rook, Square::G6.flip(),-5, false);
+        compare_table::<BlackSide>(Pawn, Square::G6.flip(), 82, false);
+        compare_table::<BlackSide>(Knight, Square::G6.flip(), -19, false);
+        compare_table::<BlackSide>(Bishop, Square::G6.flip(), 0, false);
+        compare_table::<BlackSide>(Rook, Square::G6.flip(), -5, false);
         compare_table::<BlackSide>(Queen, Square::G6.flip(), 19, false);
-        compare_table::<BlackSide>(King, Square::G6.flip(),44, false);
+        compare_table::<BlackSide>(King, Square::G6.flip(), 44, false);
     }
 
     #[test]
@@ -352,7 +370,6 @@ mod test {
         compare_evals(&initial_board, &board);
     }
 
-
     #[test]
     fn make_unmake_capture() {
         let mut board = Board::default();
@@ -369,11 +386,12 @@ mod test {
         compare_evals(&initial_board, &board);
     }
 
-
     #[test]
     fn make_unmake_en_passant() {
-        let mut board = Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3").unwrap();
-        let mut initial_game = board.clone();
+        let mut board =
+            Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3")
+                .unwrap();
+        let initial_game = board.clone();
         let en_passant = Move::from_string("d4c3", &board).unwrap();
         assert!(board.make_pl_move::<false>(en_passant));
         board.unmake_pl_move(en_passant);
@@ -383,15 +401,16 @@ mod test {
 
     #[test]
     fn unmake_castle() {
-        let mut board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
-        let mut initial_game = board.clone();
+        let mut board =
+            Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
+                .unwrap();
+        let initial_game = board.clone();
         let castle = Move::from_string("e1g1", &board).unwrap();
         assert!(board.make_pl_move::<false>(castle));
         board.unmake_pl_move(castle);
-    
+
         compare_evals(&board, &initial_game);
     }
-
 
     #[test]
     fn unmake_simple_promo() {
@@ -400,10 +419,9 @@ mod test {
         let promotion = Move::from_string("e7e8q", &board).unwrap();
         assert!(board.make_pl_move::<false>(promotion));
         board.unmake_pl_move(promotion);
-        
+
         compare_evals(&board, &initial_game);
     }
-
 
     #[test]
     fn unmake_promo_cap() {
@@ -411,28 +429,25 @@ mod test {
         let initial_game = board.clone();
         let promotion = Move::from_string("e7d8q", &board).unwrap();
         assert!(board.make_pl_move::<false>(promotion));
-      
+
         board.unmake_pl_move(promotion);
-       
-        
+
         compare_evals(&board, &initial_game);
     }
-
-
 
     #[test]
     fn unmake_multiple_quiets() {
         let mut board = Board::default();
-        let mut game_state_1 = board.clone();
-        let m1= Move::from_string("e2e3", &board).unwrap();
+        let game_state_1 = board.clone();
+        let m1 = Move::from_string("e2e3", &board).unwrap();
         assert!(board.make_pl_move::<false>(m1));
 
         let game_state_2 = board.clone();
-        let m2 =  Move::from_string("e7e6", &board).unwrap();
+        let m2 = Move::from_string("e7e6", &board).unwrap();
         assert!(board.make_pl_move::<false>(m2));
 
         let game_state_3 = board.clone();
-        let m3 =  Move::from_string("g1f3", &board).unwrap();
+        let m3 = Move::from_string("g1f3", &board).unwrap();
         assert!(board.make_pl_move::<false>(m3));
 
         board.unmake_pl_move(m3);
@@ -451,8 +466,8 @@ mod test {
         board.make_pl_move_from_string::<true>("e2e3");
         assert_eq!(board.get_mg(), initial_mg + (18));
         assert_eq!(board.get_eg(), initial_eg + (-13));
-        let mut mg_last = board.get_mg();
-        let mut eg_last = board.get_eg();
+        let mg_last = board.get_mg();
+        let eg_last = board.get_eg();
         board.make_pl_move_from_string::<true>("e7e5");
         assert_eq!(board.get_mg(), mg_last - (32));
         assert_eq!(board.get_eg(), eg_last - (-20));
@@ -460,7 +475,9 @@ mod test {
 
     #[test]
     fn test_eval_1() {
-        let mut board = Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3").unwrap();
+        let mut board =
+            Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3")
+                .unwrap();
         let initial_mg = board.get_mg();
         let initial_eg = board.get_eg();
         board.make_pl_move_from_string::<true>("d4c3");
@@ -474,7 +491,6 @@ mod test {
         let m2 = Move::new(Square::G8, Square::F6, Move::QUIET);
         let m3 = Move::new(Square::D1, Square::G4, Move::QUIET);
         let m4 = Move::new(Square::F6, Square::G4, Move::CAPTURE);
-        let m5 = Move::new(Square::A2, Square::A3, Move::QUIET);
 
         let mut board = Board::default();
         let mut initial_mg = board.get_mg();
@@ -498,6 +514,4 @@ mod test {
         assert_eq!(board.get_mg(), initial_mg - (1 + 1025 + 3));
         assert_eq!(board.get_eg(), initial_eg - (11 + 936 + 39));
     }
-
-
 }

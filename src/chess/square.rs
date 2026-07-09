@@ -1,6 +1,5 @@
+use crate::chess::board::bitboard::Bitboard;
 use std::fmt;
-
-use crate::chess::board::{bitboard::Bitboard, Board};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Debug)]
 #[repr(transparent)]
@@ -15,7 +14,7 @@ impl Square {
     pub const F1: Square = Square(5);
     pub const G1: Square = Square(6);
     pub const H1: Square = Square(7);
-    
+
     pub const A2: Square = Square(8);
     pub const B2: Square = Square(9);
     pub const C2: Square = Square(10);
@@ -24,7 +23,7 @@ impl Square {
     pub const F2: Square = Square(13);
     pub const G2: Square = Square(14);
     pub const H2: Square = Square(15);
-    
+
     pub const A3: Square = Square(16);
     pub const B3: Square = Square(17);
     pub const C3: Square = Square(18);
@@ -33,7 +32,7 @@ impl Square {
     pub const F3: Square = Square(21);
     pub const G3: Square = Square(22);
     pub const H3: Square = Square(23);
-    
+
     pub const A4: Square = Square(24);
     pub const B4: Square = Square(25);
     pub const C4: Square = Square(26);
@@ -42,7 +41,7 @@ impl Square {
     pub const F4: Square = Square(29);
     pub const G4: Square = Square(30);
     pub const H4: Square = Square(31);
-    
+
     pub const A5: Square = Square(32);
     pub const B5: Square = Square(33);
     pub const C5: Square = Square(34);
@@ -51,7 +50,7 @@ impl Square {
     pub const F5: Square = Square(37);
     pub const G5: Square = Square(38);
     pub const H5: Square = Square(39);
-    
+
     pub const A6: Square = Square(40);
     pub const B6: Square = Square(41);
     pub const C6: Square = Square(42);
@@ -60,7 +59,7 @@ impl Square {
     pub const F6: Square = Square(45);
     pub const G6: Square = Square(46);
     pub const H6: Square = Square(47);
-    
+
     pub const A7: Square = Square(48);
     pub const B7: Square = Square(49);
     pub const C7: Square = Square(50);
@@ -69,7 +68,7 @@ impl Square {
     pub const F7: Square = Square(53);
     pub const G7: Square = Square(54);
     pub const H7: Square = Square(55);
-    
+
     pub const A8: Square = Square(56);
     pub const B8: Square = Square(57);
     pub const C8: Square = Square(58);
@@ -118,7 +117,7 @@ impl Square {
 
     #[inline(always)]
     pub const fn flip(self) -> Square {
-        Self::from_u8(self.0 ^ 56) 
+        Self::from_u8(self.0 ^ 56)
     }
 
     #[inline(always)]
@@ -152,18 +151,16 @@ impl Square {
 
         let f = file - b'a';
         let r = rank - b'1';
-        
+
         Ok(Square(r * 8 + f))
     }
 }
 
-
 impl fmt::Display for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         let file_char = (b'a' + self.file()) as char;
         let rank_char = (b'1' + self.rank()) as char;
-        
+
         write!(f, "{}{}", file_char, rank_char)
     }
 }

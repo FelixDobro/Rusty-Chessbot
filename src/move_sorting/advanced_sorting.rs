@@ -1,26 +1,23 @@
-
 use crate::chess::board::Board;
-use crate::chess::board::bitboard::{EMPTY as Empty_BB};
-use crate::chess::board::evaluation::{*};
-use crate::chess::chess_move::MoveList;
-use crate::chess::chess_move::Move;
+use crate::chess::board::bitboard::EMPTY as Empty_BB;
+use crate::chess::board::evaluation::*;
 use crate::chess::chess_move::MOVE_GEN_SIZE;
+use crate::chess::chess_move::Move;
+use crate::chess::chess_move::MoveList;
 use crate::chess::chess_move::NULL_MOVE;
-use crate::chess::constants::Color::{Black, White};
-use crate::chess::constants::Piece::{*};
+use crate::chess::constants::Color::{self, Black, White};
+use crate::chess::constants::Piece::*;
 use crate::chess::constants::{BlackSide, WhiteSide};
 use crate::chess::square::Square;
 use crate::move_sorting::EvaluatedMoveList;
 
-
 pub struct NumericSorting;
 impl NumericSorting {
     pub fn move_iter(move_list: &mut MoveList<MOVE_GEN_SIZE>) -> impl Iterator<Item = &Move> {
-        move_list.as_mut_slice().sort_unstable_by(|a,b| b.cmp(a));
+        move_list.as_mut_slice().sort_unstable_by(|a, b| b.cmp(a));
         move_list.as_slice().iter()
     }
 }
-
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MoveGenStage {
@@ -47,40 +44,43 @@ impl AdvancedSorting {
     pub const HASH_M_VAL: i16 = 1000;
     pub const KILLER_MOVE_BONUS: i16 = 15000;
     pub const HISTORY_MAX: i16 = 100;
-    pub const HISTORY_MIN: i16 = - Self::HISTORY_MAX;
-    pub const PIECE_VALS: [i16; 7] = [1,2,3,4,5,6,0];
+    pub const HISTORY_MIN: i16 = -Self::HISTORY_MAX;
+    pub const PIECE_VALS: [i16; 7] = [1, 2, 3, 4, 5, 6, 0];
     pub const MAX_PIECE_VAL: i16 = 6;
 
     pub fn new(hash_move: Move) -> Self {
-        Self { 
-            tt_move: hash_move, 
-            captures: EvaluatedMoveList::new(), 
-            quiets: EvaluatedMoveList::new(), 
+        Self {
+            tt_move: hash_move,
+            captures: EvaluatedMoveList::new(),
+            quiets: EvaluatedMoveList::new(),
             current_capture: 0,
-            num_good_captures:0,
-            num_captures:0,
-            stage:MoveGenStage::HashMove
+            num_good_captures: 0,
+            num_captures: 0,
+            stage: MoveGenStage::HashMove,
         }
     }
 
-
-   #[inline(always)]
-    pub fn next(&mut self, board: &Board, killer_table: &[Move; 3], history_table: &[[[i16; 64]; 64];2]) -> Option<Move> {
+    #[inline(always)]
+    pub fn next(
+        &mut self,
+        board: &Board,
+        killer_table: &[Move; 3],
+        history_table: &[[[i16; 64]; 64]; 2],
+    ) -> Option<Move> {
         loop {
             match self.stage {
                 MoveGenStage::HashMove => {
                     self.stage = MoveGenStage::GenerateCaptures;
-                    if self.tt_move != NULL_MOVE{
+                    if self.tt_move != NULL_MOVE {
                         return Some(self.tt_move);
                     }
                 }
-                
+
                 MoveGenStage::GenerateCaptures => {
                     self.score_captures(board);
-                    
                     self.stage = MoveGenStage::YieldGoodCaptures;
                 }
-                
+
                 MoveGenStage::YieldGoodCaptures => {
                     if self.current_capture < self.num_good_captures {
                         let m = self.captures.selection_sort_next().unwrap();
@@ -93,13 +93,12 @@ impl AdvancedSorting {
                         self.stage = MoveGenStage::GenerateQuiets;
                     }
                 }
-                
-                MoveGenStage::GenerateQuiets => {
 
+                MoveGenStage::GenerateQuiets => {
                     self.score_quiets(board, killer_table, history_table);
                     self.stage = MoveGenStage::YieldQuiets;
                 }
-                
+
                 MoveGenStage::YieldQuiets => {
                     if let Some(m) = self.quiets.selection_sort_next() {
                         if m != self.tt_move {
@@ -109,7 +108,7 @@ impl AdvancedSorting {
                         self.stage = MoveGenStage::YieldBadCaptures;
                     }
                 }
-                
+
                 MoveGenStage::YieldBadCaptures => {
                     if self.current_capture < self.num_captures {
                         let m = self.captures.selection_sort_next().unwrap();
@@ -121,7 +120,7 @@ impl AdvancedSorting {
                         self.stage = MoveGenStage::Done;
                     }
                 }
-                
+
                 MoveGenStage::Done => return None,
             }
         }
@@ -131,7 +130,7 @@ impl AdvancedSorting {
     pub fn score_captures(&mut self, board: &Board) {
         let mut moves_evaluated = EvaluatedMoveList::new();
         let mut num_good_moves = 0;
-        
+
         let moves = board.generate_captures();
         self.num_captures = moves.size();
         for &m in moves.as_slice().iter() {
@@ -139,7 +138,7 @@ impl AdvancedSorting {
             if eval > 0 {
                 num_good_moves += 1;
             }
-        
+
             moves_evaluated.push(m, eval);
         }
 
@@ -148,7 +147,12 @@ impl AdvancedSorting {
     }
 
     #[inline(always)]
-    pub fn score_quiets(&mut self, board: &Board, killer_table: &[Move; 3], history: &[[[i16; 64]; 64];2]) {
+    pub fn score_quiets(
+        &mut self,
+        board: &Board,
+        killer_table: &[Move; 3],
+        history: &[[[i16; 64]; 64]; 2],
+    ) {
         let mut moves_evaluated = EvaluatedMoveList::new();
         for m in board.generate_quiets().as_slice().iter() {
             let mut value = 0;
@@ -162,8 +166,35 @@ impl AdvancedSorting {
     }
 
     #[inline(always)]
-    pub fn static_e_e(board: &Board, m: Move) -> i16 {
+    pub fn update_history(
+        &mut self,
+        m: Move,
+        depth: u8,
+        turn: Color,
+        history_table: &mut [[[i16; 64]; 64]; 2],
+    ) {
+        if m == self.tt_move {
+            self.quiets.score_history_move(
+                m,
+                (depth * depth) as i16,
+                turn,
+                history_table,
+                Self::HISTORY_MIN,
+                Self::HISTORY_MAX,
+            );
+        } else {
+            self.quiets.history_update(
+                depth,
+                turn,
+                history_table,
+                Self::HISTORY_MIN,
+                Self::HISTORY_MAX,
+            );
+        }
+    }
 
+    #[inline(always)]
+    pub fn static_e_e(board: &Board, m: Move) -> i16 {
         let to = m.to();
         let mut attack_mask = board.attack_mask(to);
         let mut turn = board.get_turn();
@@ -178,34 +209,42 @@ impl AdvancedSorting {
             let lva = match turn {
                 White => board.get_lva::<WhiteSide>(attack_mask),
                 Black => board.get_lva::<BlackSide>(attack_mask),
-                _ => panic!("No ones turn?")
+                _ => panic!("No ones turn?"),
             };
 
             if lva == Square::UNDEFINED {
-                break
+                break;
             }
-           
+
             let piece = board.get_piece(lva);
 
-            gain[index] = SIMPLE_CP_VALUES[piece.index()] - gain[index-1];
+            gain[index] = SIMPLE_CP_VALUES[piece.index()] - gain[index - 1];
             let attacker_bb = lva.to_bitboard();
             attack_mask ^= attacker_bb;
             occupied ^= attacker_bb;
             already_attacked ^= attacker_bb;
-           
+
             if is_white_turn {
-                attack_mask = board.update_attack_board::<WhiteSide>(to, attack_mask, occupied, already_attacked);
-            }
-            else {
-                attack_mask = board.update_attack_board::<BlackSide>(to, attack_mask, occupied, already_attacked);
+                attack_mask = board.update_attack_board::<WhiteSide>(
+                    to,
+                    attack_mask,
+                    occupied,
+                    already_attacked,
+                );
+            } else {
+                attack_mask = board.update_attack_board::<BlackSide>(
+                    to,
+                    attack_mask,
+                    occupied,
+                    already_attacked,
+                );
             }
             turn = turn.opposite();
             index += 1;
         }
 
-        index -= 1; 
+        index -= 1;
         while index > 0 {
-
             gain[index - 1] = i16::max(gain[index - 1], -gain[index]);
             index -= 1;
         }
@@ -226,16 +265,19 @@ impl AdvancedSorting {
         0
     }
 
-    pub fn sort_only_captures(board: &Board, hash_move: Move) -> MoveList<64>{
+    pub fn sort_only_captures(board: &Board, hash_move: Move) -> MoveList<64> {
         let mut moves_evaluated = [(NULL_MOVE, 0i16); 64];
         let moves = board.generate_captures();
         let num_captures = moves.size();
         for (i, &m) in moves.as_slice().iter().enumerate() {
-            let eval = if m == hash_move {Self::HASH_M_VAL} else {Self::eval_capture(board, m)};
+            let eval = if m == hash_move {
+                Self::HASH_M_VAL
+            } else {
+                Self::eval_capture(board, m)
+            };
             moves_evaluated[i] = (m, eval);
         }
-        moves_evaluated
-        .sort_by_key(|entry| - entry.1);
+        moves_evaluated.sort_by_key(|entry| -entry.1);
 
         let mut result = [NULL_MOVE; 64];
         for i in 0..num_captures {
@@ -243,28 +285,24 @@ impl AdvancedSorting {
         }
         MoveList::from_slice(result, num_captures)
     }
-
-    pub fn set_hash_m(&mut self, m: Move) {
-        if m != NULL_MOVE {
-            self.tt_move = m;
-        }
-    
-    }
 }
 
-
-
-    
 #[cfg(test)]
 mod test {
-    use crate::{chess::{board::Board, chess_move::NULL_MOVE}, move_sorting::advanced_sorting::AdvancedSorting};
-
+    use crate::{
+        chess::{board::Board, chess_move::NULL_MOVE},
+        move_sorting::advanced_sorting::AdvancedSorting,
+    };
 
     #[test]
     fn insert_empty_moves() {
         let mut sorter = AdvancedSorting::new(NULL_MOVE);
         let board = Board::from_fen("6k1/8/6K1/8/8/8/8/1R6 w - - 0 1").unwrap();
-        let m = sorter.next(&board, &[NULL_MOVE, NULL_MOVE, NULL_MOVE], &[[[0i16; 64]; 64];2]);
+        let m = sorter.next(
+            &board,
+            &[NULL_MOVE, NULL_MOVE, NULL_MOVE],
+            &[[[0i16; 64]; 64]; 2],
+        );
         assert!(m.is_some(), "No moves found");
     }
 }

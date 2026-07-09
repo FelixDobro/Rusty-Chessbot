@@ -1,19 +1,16 @@
 use super::Board;
-use crate::chess::board::evaluation::{MG, PHASE_VALUES};
+use crate::chess::board::evaluation::PHASE_VALUES;
 use crate::chess::chess_move::*;
 use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::*;
 
-use crate::chess::constants::Piece::*;
-use crate::chess::board::UndoInfo;
 use super::bitboard::EMPTY as EMPTY_BB;
 use super::bitboard::*;
+use crate::chess::board::UndoInfo;
+use crate::chess::constants::Piece::*;
 use crate::chess::square::*;
 
 #[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{_pdep_u64, _pext_u64};
-use std::f32::consts::E;
-
 
 pub trait GenType {
     const SHOULD_GEN_CAPTURES: bool;
@@ -27,7 +24,7 @@ impl GenType for GenAll {
 }
 
 pub struct GenCaptures;
-impl GenType for GenCaptures{
+impl GenType for GenCaptures {
     const SHOULD_GEN_CAPTURES: bool = true;
     const SHOULD_GEN_QUIETS: bool = false;
 }
@@ -37,7 +34,6 @@ impl GenType for GenQuiets {
     const SHOULD_GEN_CAPTURES: bool = false;
     const SHOULD_GEN_QUIETS: bool = true;
 }
-
 
 impl Board {
     pub fn generate_pseudolegals(&self) -> MoveList<MOVE_GEN_SIZE> {
@@ -74,14 +70,12 @@ impl Board {
         self.king_moves::<S, G>(&mut move_list);
         self.castling_moves::<S, G>(&mut move_list);
         move_list
-    } 
-
-
+    }
 
     #[inline(always)]
     pub fn castling_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         if !G::SHOULD_GEN_QUIETS {
-            return
+            return;
         }
         if !self.sq_attacked_by::<S::OPPOSITE>(Square::E1) {
             if self.castling_rights & CastlingRights::KingCastleWhite.index() != 0 {
@@ -134,17 +128,17 @@ impl Board {
 
         let from_sqaure = king_board.lsb();
         let pattern_board = KING_PATTERNS[from_sqaure.usize()];
-       
+
         if G::SHOULD_GEN_QUIETS {
             let mut normal_moves =
-            pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
+                pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
             while normal_moves != EMPTY_BB {
                 let to_square = normal_moves.lsb();
                 move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                 normal_moves.pop_lsb();
             }
         }
-        
+
         if G::SHOULD_GEN_CAPTURES {
             let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
             while captures != EMPTY_BB {
@@ -153,9 +147,7 @@ impl Board {
                 captures.pop_lsb();
             }
         }
-        
     }
-
 
     #[inline(always)]
     pub fn queen_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
@@ -165,19 +157,19 @@ impl Board {
             let from_sqaure = queen_board.lsb();
 
             let mut pattern_board = self.straight_lines_w_bound(from_sqaure);
-            let diag_patterns= self.diag_lines_w_bound(from_sqaure);
+            let diag_patterns = self.diag_lines_w_bound(from_sqaure);
             pattern_board |= diag_patterns;
 
             if G::SHOULD_GEN_QUIETS {
                 let mut normal_moves =
-                pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
+                    pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
                 while normal_moves != EMPTY_BB {
                     let to_square = normal_moves.lsb();
                     move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
                     normal_moves.pop_lsb();
                 }
             }
-            
+
             if G::SHOULD_GEN_CAPTURES {
                 let mut captures = pattern_board & self.color_bb[S::OPPOSITE::INDEX];
                 while captures != EMPTY_BB {
@@ -186,13 +178,10 @@ impl Board {
                     captures.pop_lsb();
                 }
             }
-            
+
             queen_board.pop_lsb();
         }
     }
-
-
-
 
     #[inline(always)]
     pub fn rook_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
@@ -205,7 +194,7 @@ impl Board {
 
             if G::SHOULD_GEN_QUIETS {
                 let mut normal_moves =
-                pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
+                    pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
                 while normal_moves != EMPTY_BB {
                     let to_square = normal_moves.lsb();
                     move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
@@ -225,7 +214,6 @@ impl Board {
         }
     }
 
-
     #[inline(always)]
     pub fn bishop_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut bishop_board = self.piece_bb[S::OFFSET + Bishop.index()];
@@ -237,7 +225,7 @@ impl Board {
 
             if G::SHOULD_GEN_QUIETS {
                 let mut normal_moves =
-                pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
+                    pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
 
                 while normal_moves != EMPTY_BB {
                     let to_square = normal_moves.lsb();
@@ -258,7 +246,6 @@ impl Board {
         }
     }
 
-
     #[inline(always)]
     pub fn knight_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let mut knight_board = self.piece_bb[S::OFFSET + Knight.index()];
@@ -267,10 +254,10 @@ impl Board {
             let from_sqaure = knight_board.lsb();
 
             let pattern_board = KNIGHT_PATTERNS[from_sqaure.usize()];
-            
+
             if G::SHOULD_GEN_QUIETS {
                 let mut normal_moves =
-                pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
+                    pattern_board & !self.color_bb[S::OPPOSITE::INDEX] & !self.color_bb[S::INDEX];
                 while normal_moves != EMPTY_BB {
                     let to_square = normal_moves.lsb();
                     move_list.push(Move::new(from_sqaure, to_square, Move::QUIET));
@@ -290,7 +277,6 @@ impl Board {
         }
     }
 
-
     #[inline(always)]
     pub fn pawn_moves<S: Side, G: GenType>(&self, move_list: &mut MoveList<MOVE_GEN_SIZE>) {
         let pawn_board = self.piece_bb[Pawn.index() + S::OFFSET];
@@ -299,9 +285,9 @@ impl Board {
             let pushes = S::shift_up(pawn_board) & !self.occupied;
             let mut single_pushes = pushes & !S::LAST_RANK;
 
-            let mut double_pushes = S::shift_up(single_pushes) & S::DOUBLE_PUSH_RANK & !self.occupied;
+            let mut double_pushes =
+                S::shift_up(single_pushes) & S::DOUBLE_PUSH_RANK & !self.occupied;
             let mut promotions = pushes & S::LAST_RANK;
-
 
             while single_pushes != EMPTY_BB {
                 let to_square = single_pushes.lsb().i8();
@@ -414,8 +400,6 @@ impl Board {
         }
     }
 
-
-
     #[inline(always)]
     pub fn make_pl_move<const EVAL: bool>(&mut self, m: Move) -> bool {
         match self.turn {
@@ -425,31 +409,18 @@ impl Board {
         }
     }
 
-
     // Only for testing, not recommendet!!!
     #[inline(always)]
     pub fn make_pl_move_from_string<const EVAL: bool>(&mut self, m: &str) -> Move {
         let m_new = Move::from_string(m, self).unwrap();
-        
+
         match self.turn {
             Color::White => self.make_pseudolegal_move::<WhiteSide, EVAL>(m_new),
             Color::Black => self.make_pseudolegal_move::<BlackSide, EVAL>(m_new),
             _ => panic!("No ones turn"),
         };
-        return m_new
+        return m_new;
     }
-
-
-    #[inline(always)]
-    fn make_pl_move_from_strings<const EVAL: bool>(&mut self, moves: &[&str])  {
-        for &m in moves {
-            let m_new = Move::from_string(m, self).unwrap();
-            self.make_pl_move::<EVAL>(m_new);
-        }
-
-    }
-
-
 
     fn make_pseudolegal_move<S: Side, const EVAL: bool>(&mut self, m: Move) -> bool {
         let (from, to, from_board, to_board) = m.split();
@@ -472,15 +443,15 @@ impl Board {
             captured_piece: piece_captured,
             last_mg: self.eval_mg,
             last_eg: self.eval_eg,
-            last_phase: self.game_phase
+            last_phase: self.game_phase,
         };
-        
+
         self.update_hash_caslte(self.castling_rights);
         self.update_hash_piece::<S>(piece_moved, from);
         self.update_hash_piece::<S>(piece_moved, to);
         self.halfmoves += 1;
         self.castling_rights &= !CASTLING_RIGHTS[from.usize()];
-        
+
         if EVAL {
             self.rm_eval::<S>(piece_moved, from);
             self.add_eval::<S>(piece_moved, to);
@@ -512,10 +483,10 @@ impl Board {
         else if move_flags > Move::EN_PASSANT {
             let promo = match move_flags {
                 Move::PROMO_CAP_QUEEN | Move::PROMO_QUEEN => Queen,
-                Move::PROMO_CAP_KNIGHT | Move::PROMO_KNIGHT=> Knight,
+                Move::PROMO_CAP_KNIGHT | Move::PROMO_KNIGHT => Knight,
                 Move::PROMO_CAP_BISHOP | Move::PROMO_BISHOP => Bishop,
                 Move::PROMO_CAP_ROOK | Move::PROMO_ROOK => Rook,
-                _ => panic!()
+                _ => panic!(),
             };
             self.piece_bb[promo.index() + S::OFFSET] ^= to_board;
             self.piece_bb[Pawn.index() + S::OFFSET] ^= to_board;
@@ -528,8 +499,7 @@ impl Board {
                 self.add_eval::<S>(promo, to);
                 self.add_p_eval::<S>(promo);
             }
-        }
-        else if move_flags == Move::EN_PASSANT {
+        } else if move_flags == Move::EN_PASSANT {
             let pawn_remove_board = EN_PASSANT_RM_SQUARES[to.index()];
             self.piece_bb[Pawn.index() + S::OPPOSITE::OFFSET] ^= pawn_remove_board;
             self.color_bb[S::OPPOSITE::INDEX] ^= pawn_remove_board;
@@ -541,8 +511,7 @@ impl Board {
                 self.rm_eval::<S::OPPOSITE>(Pawn, ep_square);
                 self.rm_p_eval::<S::OPPOSITE>(Pawn);
             }
-        }
-        else if m.is_castle() {
+        } else if m.is_castle() {
             let mechs = &CASTLING_TABLE[S::INDEX][(move_flags & 1) as usize];
             self.piece_bb[Rook.index() + S::OFFSET] ^= mechs.rook_movement;
             self.color_bb[S::INDEX] ^= mechs.rook_movement;
@@ -554,7 +523,7 @@ impl Board {
                 self.rm_eval::<S>(Rook, mechs.rook_disappears);
                 self.add_eval::<S>(Rook, mechs.rook_appears);
             }
-        }   
+        }
 
         self.occupied = self.color_bb[0] | self.color_bb[1];
         self.turn = self.turn.opposite();
@@ -574,7 +543,7 @@ impl Board {
         let movement = from_board ^ to_board;
 
         let p_moved = self.piece[to.index()];
-        
+
         self.piece_bb[p_moved.index() + S::OFFSET] ^= movement;
         self.color_bb[S::INDEX] ^= movement;
         self.piece[from.index()] = p_moved;
@@ -590,28 +559,23 @@ impl Board {
         let move_flags = m.flags();
 
         if m.is_promo() {
-
             let promo = match move_flags {
                 Move::PROMO_CAP_QUEEN | Move::PROMO_QUEEN => Queen,
-                Move::PROMO_CAP_KNIGHT | Move::PROMO_KNIGHT=> Knight,
+                Move::PROMO_CAP_KNIGHT | Move::PROMO_KNIGHT => Knight,
                 Move::PROMO_CAP_BISHOP | Move::PROMO_BISHOP => Bishop,
                 Move::PROMO_CAP_ROOK | Move::PROMO_ROOK => Rook,
-                _ => panic!()
+                _ => panic!(),
             };
             self.piece_bb[promo.index() + S::OFFSET] ^= from_board;
             self.piece_bb[S::OFFSET + Pawn.index()] ^= from_board;
             self.piece[from.index()] = Pawn
-        }
-
-        else if move_flags == Move::EN_PASSANT {
+        } else if move_flags == Move::EN_PASSANT {
             let pawn_remove_board = EN_PASSANT_RM_SQUARES[to.index()];
             self.piece_bb[Pawn.index() + S::OPPOSITE::OFFSET] ^= pawn_remove_board;
             self.color_bb[S::OPPOSITE::INDEX] ^= pawn_remove_board;
             let ep_square = pawn_remove_board.lsb();
             self.piece[ep_square.index()] = Pawn;
-            
-        }
-        else if m.is_castle() {
+        } else if m.is_castle() {
             let mechs = &CASTLING_TABLE[S::INDEX][(move_flags & 1) as usize];
             self.piece_bb[Rook.index() + S::OFFSET] ^= mechs.rook_movement;
             self.color_bb[S::INDEX] ^= mechs.rook_movement;
@@ -621,7 +585,6 @@ impl Board {
         self.occupied = self.color_bb[0] | self.color_bb[1];
         self.undo_state(undo_info);
     }
-
 
     #[inline(always)]
     fn undo_state(&mut self, undo_info: &UndoInfo) {
@@ -636,9 +599,6 @@ impl Board {
         self.positions.pop();
     }
 
-  
-
-
     pub fn unmake_pl_move(&mut self, m: Move) {
         let undo_info = self.undo_stack.pop();
         match self.turn {
@@ -649,16 +609,14 @@ impl Board {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use crate::chess::{board::Board, chess_move::Move};
 
-    
     #[test]
     fn default_captures() {
         let board = Board::default();
-        let captures =board.generate_captures();
+        let captures = board.generate_captures();
         assert_eq!(captures.size(), 0, "Initial position does not have capture")
     }
 
@@ -670,6 +628,10 @@ mod test {
         let m1 = Move::from_string("b7b5", &board).unwrap();
         assert!(board.make_pl_move::<false>(m1));
         let captures = board.generate_captures();
-        assert_eq!(captures.as_slice()[0], Move::from_string("f1b5",  &board).unwrap(), "Bishop should be able to capture pawn");
+        assert_eq!(
+            captures.as_slice()[0],
+            Move::from_string("f1b5", &board).unwrap(),
+            "Bishop should be able to capture pawn"
+        );
     }
 }

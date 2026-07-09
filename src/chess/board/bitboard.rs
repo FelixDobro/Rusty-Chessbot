@@ -25,13 +25,10 @@ impl Bitboard {
     pub fn from_squares(squares: Vec<Square>) -> Self {
         let mut board = EMPTY;
         squares
-        .iter()
-        .for_each(|&sq| board |= Self::with_one_bit(sq));
+            .iter()
+            .for_each(|&sq| board |= Self::with_one_bit(sq));
         board
     }
-
-
-
 
     #[inline(always)]
     pub const fn u64(self) -> u64 {
@@ -208,7 +205,6 @@ pub const DEFAULT_COLOR_W: Bitboard = Bitboard(0x000000000000FFFF);
 pub const DEFAULT_COLOR_B: Bitboard = Bitboard(0xFFFF000000000000);
 pub const DEFAULT_OCCUPIED: Bitboard = Bitboard(0xFFFF00000000FFFF);
 
-
 pub fn init_lazylocks() {
     LazyLock::force(&EN_PESSANT_UPDATES);
     LazyLock::force(&EN_PASSANT_RM_SQUARES);
@@ -220,7 +216,6 @@ pub fn init_lazylocks() {
     LazyLock::force(&STRAIGHT_LINES_MAGIC);
     LazyLock::force(&PAWN_ATTACKS);
 }
-
 
 // when performing a double move this table maps m.from sqaures to en_passant bitboards
 pub static EN_PESSANT_UPDATES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
@@ -309,7 +304,7 @@ pub static DIAGONAL_LINES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
 });
 
 // Needed for const PDEP Intrinsic functionallity. Slow but does not matter since precomputed
-const fn const_PDEP(index: u64, mut move_rays: u64) -> u64 {
+const fn const_pdep(index: u64, mut move_rays: u64) -> u64 {
     let mut start = 0;
     let mut result = 0;
 
@@ -338,7 +333,7 @@ pub static DIAG_LINES_MAGIC: LazyLock<Box<[[Bitboard; 512]; 64]>> = LazyLock::ne
         let mut unique_index = 0;
 
         while unique_index < (1u64 << move_mask.count_ones()) {
-            let occupancy = const_PDEP(unique_index, move_mask);
+            let occupancy = const_pdep(unique_index, move_mask);
 
             let mut tmp_square: i32 = sq as i32;
             let mut moves = EMPTY.u64();
@@ -411,7 +406,7 @@ pub static STRAIGHT_LINES_MAGIC: LazyLock<Box<[[Bitboard; 4096]; 64]>> = LazyLoc
         let mut unique_index = 0;
 
         while unique_index < (1u64 << move_mask.count_ones()) {
-            let occupancy = const_PDEP(unique_index as u64, move_mask);
+            let occupancy = const_pdep(unique_index as u64, move_mask);
 
             let mut tmp_square: i32 = sq as i32;
             let mut moves = EMPTY.u64();

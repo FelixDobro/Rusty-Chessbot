@@ -1,33 +1,31 @@
 pub mod bitboard;
+pub mod evaluation;
 pub mod hash;
 pub mod move_gen;
-pub mod evaluation;
-
 
 use bitboard::EMPTY as EMPTY_BB;
 use bitboard::*;
 #[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{_pdep_u64, _pext_u64};
-use std::collections::btree_map::Entry::Occupied;
+use std::arch::x86_64::_pext_u64;
+
 use std::error::Error;
-use std::{default, str};
+use std::str;
 
-use crate::chess::chess_move::{GAME_MOVES_SIZE, Move, MoveList};
-use hash::HashList;
+use crate::chess::chess_move::Move;
 use crate::chess::square::Square;
+use hash::HashList;
 
-use crate::chess::constants::{*};
 use crate::chess::constants::Color::{Black, White};
 use crate::chess::constants::Piece::*;
+use crate::chess::constants::*;
 use crate::chess::constants::{BlackSide, CastlingRights, Color, Piece, Side, WhiteSide};
 
-
-pub const GAME_POSITIONS_SIZE:usize = 1024;
+pub const GAME_POSITIONS_SIZE: usize = 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UndoInfo {
     pub castling_rights: u8,
-    pub en_passant_square: Bitboard, 
+    pub en_passant_square: Bitboard,
     pub halfmove_clock: u16,
     pub hash: u64,
     pub captured_piece: Piece,
@@ -37,23 +35,32 @@ pub struct UndoInfo {
 }
 
 impl UndoInfo {
-    
     pub fn empty() -> Self {
-        Self { castling_rights: 0, en_passant_square: EMPTY_BB, halfmove_clock: 0, captured_piece: Empty, hash: 0, last_eg: 0, last_mg: 0, last_phase: 0}
+        Self {
+            castling_rights: 0,
+            en_passant_square: EMPTY_BB,
+            halfmove_clock: 0,
+            captured_piece: Empty,
+            hash: 0,
+            last_eg: 0,
+            last_mg: 0,
+            last_phase: 0,
+        }
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UndoStack {
     undo_stack: [UndoInfo; GAME_POSITIONS_SIZE],
-    count: usize
+    count: usize,
 }
 
 impl UndoStack {
-
     pub fn new() -> Self {
-        UndoStack { undo_stack: [UndoInfo::empty(); GAME_POSITIONS_SIZE], count: 0}
+        UndoStack {
+            undo_stack: [UndoInfo::empty(); GAME_POSITIONS_SIZE],
+            count: 0,
+        }
     }
 
     #[inline(always)]
@@ -69,8 +76,6 @@ impl UndoStack {
     }
 }
 
-
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(align(64))]
 
@@ -84,7 +89,7 @@ pub struct Board {
     turn: Color,
     en_passant: Bitboard,
     castling_rights: u8,
-    
+
     eval_mg: i16,
     eval_eg: i16,
     game_phase: i16,
@@ -94,7 +99,6 @@ pub struct Board {
 
     undo_stack: Box<UndoStack>,
     positions: HashList<GAME_POSITIONS_SIZE>,
-    
 }
 
 #[derive(Debug)]
@@ -164,11 +168,11 @@ impl Board {
         let mut piece_8_board = [Empty; 64];
         let mut color_bb = [EMPTY_BB; 2];
         let mut occupied = EMPTY_BB;
-        let mut turn: Color;
         let mut en_passant_right = EMPTY_BB;
         let mut castling_rights = 0;
         let mut halfmoves_b: u16 = 1;
         let mut fullmoves_b = 0;
+        let turn: Color;
 
         let mut splitted = fen_string.split(" ");
 
@@ -284,7 +288,7 @@ impl Board {
             game_phase: 0,
             fullmove_counter: fullmoves_b,
             positions: HashList::new(),
-            undo_stack: Box::new(UndoStack::new())
+            undo_stack: Box::new(UndoStack::new()),
         };
         board.hash = board.calculate_hash();
         board.eval_eg = board.calculate_eg();
@@ -298,7 +302,6 @@ impl Board {
         self.hash
     }
 
-   
     #[inline(always)]
     pub fn get_turn(&self) -> Color {
         self.turn
@@ -461,7 +464,7 @@ impl Board {
 
     pub fn diag_lines_occupied(&self, sq: Square, occupied: Bitboard) -> Bitboard {
         let mask = DIAGONAL_LINES[sq.usize()];
-        let index = unsafe { _pext_u64(occupied.u64(), mask.u64())};
+        let index = unsafe { _pext_u64(occupied.u64(), mask.u64()) };
         DIAG_LINES_MAGIC[sq.usize()][index as usize]
     }
 
@@ -477,7 +480,6 @@ impl Board {
         STRAIGHT_LINES_MAGIC[sq.usize()][index as usize]
     }
 
-
     #[inline(always)]
     pub fn attack_mask(&self, sq: Square) -> Bitboard {
         let mut attack_mask = EMPTY_BB;
@@ -487,36 +489,33 @@ impl Board {
         let white_pawns = self.piece_bb[Pawn.index() + WhiteSide::OFFSET];
         attack_mask |= PAWN_ATTACKS[BlackSide::INDEX][sq.index()] & white_pawns;
 
-        let knights = self.piece_bb[Knight.index()] | self.piece_bb[BlackSide::OFFSET + Knight.index()];
+        let knights =
+            self.piece_bb[Knight.index()] | self.piece_bb[BlackSide::OFFSET + Knight.index()];
         attack_mask |= KNIGHT_PATTERNS[sq.usize()] & knights;
 
         let king = self.piece_bb[King.index()] | self.piece_bb[BlackSide::OFFSET + King.index()];
         attack_mask |= KING_PATTERNS[sq.usize()] & king;
 
-        let bishop_queen = 
-        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
-        self.piece_bb[WhiteSide::OFFSET + Bishop.index()] |
-        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
-        self.piece_bb[BlackSide::OFFSET + Bishop.index()];
+        let bishop_queen = self.piece_bb[WhiteSide::OFFSET + Queen.index()]
+            | self.piece_bb[WhiteSide::OFFSET + Bishop.index()]
+            | self.piece_bb[BlackSide::OFFSET + Queen.index()]
+            | self.piece_bb[BlackSide::OFFSET + Bishop.index()];
 
         attack_mask |= self.diag_lines_w_bound(sq) & bishop_queen;
 
-        let rook_queens = 
-        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
-        self.piece_bb[WhiteSide::OFFSET + Rook.index()] |
-        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
-        self.piece_bb[BlackSide::OFFSET + Rook.index()];
+        let rook_queens = self.piece_bb[WhiteSide::OFFSET + Queen.index()]
+            | self.piece_bb[WhiteSide::OFFSET + Rook.index()]
+            | self.piece_bb[BlackSide::OFFSET + Queen.index()]
+            | self.piece_bb[BlackSide::OFFSET + Rook.index()];
         attack_mask |= self.straight_lines_w_bound(sq) & rook_queens;
 
         attack_mask
-
     }
 
     pub fn get_lva<S: Side>(&self, attack_mask: Bitboard) -> Square {
-        
         let pawn_board = self.piece_bb[S::OFFSET + Pawn.index()];
         let mut pawn_attackers = pawn_board & attack_mask;
-        if  pawn_attackers != EMPTY_BB {
+        if pawn_attackers != EMPTY_BB {
             while pawn_attackers.count_ones() > 1 {
                 pawn_attackers.pop_lsb();
             }
@@ -567,25 +566,28 @@ impl Board {
             }
             return king_attackers.lsb();
         }
-     
+
         EMPTY_BB.lsb()
     }
 
-    pub fn update_attack_board<S: Side>(&self, sq: Square, mut attack_mask: Bitboard, occupied: Bitboard, dont_include: Bitboard) -> Bitboard {
-        
-        let bishop_queen = 
-        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
-        self.piece_bb[WhiteSide::OFFSET + Bishop.index()] |
-        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
-        self.piece_bb[BlackSide::OFFSET + Bishop.index()];
-        attack_mask |= self.diag_lines_occupied(sq, occupied) & bishop_queen &! dont_include;
+    pub fn update_attack_board<S: Side>(
+        &self,
+        sq: Square,
+        mut attack_mask: Bitboard,
+        occupied: Bitboard,
+        dont_include: Bitboard,
+    ) -> Bitboard {
+        let bishop_queen = self.piece_bb[WhiteSide::OFFSET + Queen.index()]
+            | self.piece_bb[WhiteSide::OFFSET + Bishop.index()]
+            | self.piece_bb[BlackSide::OFFSET + Queen.index()]
+            | self.piece_bb[BlackSide::OFFSET + Bishop.index()];
+        attack_mask |= self.diag_lines_occupied(sq, occupied) & bishop_queen & !dont_include;
 
-        let rook_queens = 
-        self.piece_bb[WhiteSide::OFFSET + Queen.index()] |
-        self.piece_bb[WhiteSide::OFFSET + Rook.index()] |
-        self.piece_bb[BlackSide::OFFSET + Queen.index()] |
-        self.piece_bb[BlackSide::OFFSET + Rook.index()];
-        attack_mask |= self.straight_lines_occupied(sq, occupied) & rook_queens &! dont_include;
+        let rook_queens = self.piece_bb[WhiteSide::OFFSET + Queen.index()]
+            | self.piece_bb[WhiteSide::OFFSET + Rook.index()]
+            | self.piece_bb[BlackSide::OFFSET + Queen.index()]
+            | self.piece_bb[BlackSide::OFFSET + Rook.index()];
+        attack_mask |= self.straight_lines_occupied(sq, occupied) & rook_queens & !dont_include;
 
         attack_mask
     }
@@ -637,8 +639,6 @@ impl Board {
         return self.get_piece(square) as usize;
     }
 
-
-
     pub fn count_material(&self) -> i16 {
         let mut result = 0i16;
         result += self.piece_bb[Pawn.index()].count_ones() as i16;
@@ -658,8 +658,6 @@ impl Board {
             _ => -result,
         }
     }
-
-    
 
     pub fn qualify_move(&self, m: &str) -> Result<Move, Box<dyn Error>> {
         match self.turn {
@@ -700,14 +698,13 @@ impl Board {
                     } else if S::shift_up(from_square.to_bitboard()) & to_board != EMPTY_BB {
                         if to_board & S::LAST_RANK != EMPTY_BB {
                             if let Some(c) = m.chars().nth(4) {
-                            
                                 flags = match c {
-                                'q' => Move::PROMO_QUEEN,
-                                'n' => Move::PROMO_KNIGHT,
-                                'r' => Move::PROMO_ROOK,
-                                'b' => Move::PROMO_BISHOP,
-                                _ => panic!(),
-                            };
+                                    'q' => Move::PROMO_QUEEN,
+                                    'n' => Move::PROMO_KNIGHT,
+                                    'r' => Move::PROMO_ROOK,
+                                    'b' => Move::PROMO_BISHOP,
+                                    _ => panic!(),
+                                };
                             } else {
                                 return Err(
                                     format!("Should be en passant_capture, no 5th char").into()
@@ -719,10 +716,7 @@ impl Board {
                     }
                 }
                 _ => {
-                   
-              
                     if to_board & S::LAST_RANK != EMPTY_BB {
-                        
                         if let Some(c) = m.chars().nth(4) {
                             flags = match c {
                                 'q' => Move::PROMO_CAP_QUEEN,
@@ -735,7 +729,6 @@ impl Board {
                             return Err(format!("Should be en passant_capture, no 5th char").into());
                         }
                     } else {
-                   
                         flags = Move::CAPTURE;
                     }
                 }
@@ -786,7 +779,6 @@ impl Board {
         }
     }
 
-
     pub fn can_claim_draw(&self) -> bool {
         let halfmoves = self.halfmoves as u64;
 
@@ -813,7 +805,6 @@ impl Board {
             return true;
         }
 
-
         let mut num_occurences = 0;
         let current_hash = self.hash;
 
@@ -825,22 +816,16 @@ impl Board {
 
         num_occurences > 1
     }
-
-
 }
-
 
 #[cfg(test)]
 mod test {
 
-   
-
-use crate::chess::board::bitboard::{Bitboard, EMPTY};
-use crate::chess::chess_move::Move;
-    use crate::chess::constants::{WhiteSide};
-use crate::chess::square::Square;
     use crate::chess::board::Board;
-
+    use crate::chess::board::bitboard::{Bitboard, EMPTY};
+    use crate::chess::chess_move::Move;
+    use crate::chess::constants::WhiteSide;
+    use crate::chess::square::Square;
 
     #[test]
     fn default_should_be_equal_0() {
@@ -907,23 +892,62 @@ use crate::chess::square::Square;
         );
     }
 
-
-  
-
     fn compare_games(game_1: &Board, game_2: &Board) {
-    
-        assert_eq!(game_1.fullmove_counter, game_2.fullmove_counter, "Full move counters dont match");
-        assert_eq!(game_1.get_pieces(), game_2.get_pieces(), "Piece boards dont match");
-        assert_eq!(game_1.get_all_bitboards(), game_2.get_all_bitboards(), "Bitboards dont match");
-        assert_eq!(game_1.white_pieces(), game_2.white_pieces(), "White bb does not match");
-        assert_eq!(game_1.get_enpassant(), game_2.get_enpassant(), "En passant does not match");
-        assert_eq!(game_1.get_halfmoves(), game_2.get_halfmoves(), "Halfmoves dont not match");
-        assert_eq!(game_1.black_pieces(), game_2.black_pieces(), "Black bb does not match");
-        assert_eq!(game_1.get_occupied(), game_2.get_occupied(), "Occupied does not match");
+        assert_eq!(
+            game_1.fullmove_counter, game_2.fullmove_counter,
+            "Full move counters dont match"
+        );
+        assert_eq!(
+            game_1.get_pieces(),
+            game_2.get_pieces(),
+            "Piece boards dont match"
+        );
+        assert_eq!(
+            game_1.get_all_bitboards(),
+            game_2.get_all_bitboards(),
+            "Bitboards dont match"
+        );
+        assert_eq!(
+            game_1.white_pieces(),
+            game_2.white_pieces(),
+            "White bb does not match"
+        );
+        assert_eq!(
+            game_1.get_enpassant(),
+            game_2.get_enpassant(),
+            "En passant does not match"
+        );
+        assert_eq!(
+            game_1.get_halfmoves(),
+            game_2.get_halfmoves(),
+            "Halfmoves dont not match"
+        );
+        assert_eq!(
+            game_1.black_pieces(),
+            game_2.black_pieces(),
+            "Black bb does not match"
+        );
+        assert_eq!(
+            game_1.get_occupied(),
+            game_2.get_occupied(),
+            "Occupied does not match"
+        );
         assert_eq!(game_1.get_turn(), game_2.get_turn(), "Turn does not match");
         assert_eq!(game_1.get_hash(), game_2.get_hash(), "Hash does not match");
-        assert_eq!(game_1.get_castling_rights(), game_2.get_castling_rights(), "Castling rights do not match");
-        assert_eq!(game_1.positions.half_move_iter(game_1.get_halfmoves() as u64), game_2.positions.half_move_iter(game_2.get_halfmoves() as u64), "Full move counters dont match");
+        assert_eq!(
+            game_1.get_castling_rights(),
+            game_2.get_castling_rights(),
+            "Castling rights do not match"
+        );
+        assert_eq!(
+            game_1
+                .positions
+                .half_move_iter(game_1.get_halfmoves() as u64),
+            game_2
+                .positions
+                .half_move_iter(game_2.get_halfmoves() as u64),
+            "Full move counters dont match"
+        );
     }
 
     #[test]
@@ -935,8 +959,6 @@ use crate::chess::square::Square;
         board.unmake_pl_move(m);
         compare_games(&board, &inital_game);
     }
-
-
 
     #[test]
     fn make_unmake_capture() {
@@ -950,12 +972,9 @@ use crate::chess::square::Square;
         let inital_game = board.clone();
         assert!(board.make_pl_move::<false>(m2));
         board.unmake_pl_move(m2);
-      
-    
+
         compare_games(&board, &inital_game);
     }
-
-
 
     #[test]
     fn make_unmake_dpuble_pawn_0() {
@@ -964,7 +983,7 @@ use crate::chess::square::Square;
         let inital_game = board.clone();
         assert!(board.make_pl_move::<false>(m));
         board.unmake_pl_move(m);
-    
+
         compare_games(&board, &inital_game);
     }
 
@@ -975,14 +994,16 @@ use crate::chess::square::Square;
         let inital_game = board.clone();
         assert!(board.make_pl_move::<false>(m));
         board.unmake_pl_move(m);
-    
+
         compare_games(&board, &inital_game);
     }
 
     #[test]
     fn make_unmake_en_passant() {
-        let mut board = Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3").unwrap();
-        let mut initial_game = board.clone();
+        let mut board =
+            Board::from_fen("rnbqkbnr/ppp1pppp/8/8/2PpP3/5P2/PP1P2PP/RNBQKBNR b KQkq c3 0 3")
+                .unwrap();
+        let initial_game = board.clone();
         let en_passant = Move::from_string("d4c3", &board).unwrap();
         assert!(board.make_pl_move::<false>(en_passant));
         board.unmake_pl_move(en_passant);
@@ -990,20 +1011,18 @@ use crate::chess::square::Square;
         compare_games(&board, &initial_game);
     }
 
-
-
     #[test]
     fn unmake_castle() {
-        let mut board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
-        let mut initial_game = board.clone();
+        let mut board =
+            Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
+                .unwrap();
+        let initial_game = board.clone();
         let castle = Move::from_string("e1g1", &board).unwrap();
         assert!(board.make_pl_move::<false>(castle));
         board.unmake_pl_move(castle);
-    
+
         compare_games(&board, &initial_game);
     }
-
-    
 
     #[test]
     fn unmake_simple_promo() {
@@ -1011,13 +1030,11 @@ use crate::chess::square::Square;
         let initial_game = board.clone();
         let promotion = Move::from_string("e7e8q", &board).unwrap();
         assert!(board.make_pl_move::<false>(promotion));
-    
+
         board.unmake_pl_move(promotion);
-       
-        
+
         compare_games(&board, &initial_game);
     }
-    
 
     #[test]
     fn unmake_promo_cap() {
@@ -1025,27 +1042,25 @@ use crate::chess::square::Square;
         let initial_game = board.clone();
         let promotion = Move::from_string("e7d8q", &board).unwrap();
         assert!(board.make_pl_move::<false>(promotion));
-      
+
         board.unmake_pl_move(promotion);
-       
-        
+
         compare_games(&board, &initial_game);
     }
-
 
     #[test]
     fn unmake_multiple_quiets() {
         let mut board = Board::default();
-        let mut game_state_1 = board.clone();
-        let m1= Move::from_string("e2e3", &board).unwrap();
+        let game_state_1 = board.clone();
+        let m1 = Move::from_string("e2e3", &board).unwrap();
         assert!(board.make_pl_move::<false>(m1));
 
         let game_state_2 = board.clone();
-        let m2 =  Move::from_string("e7e6", &board).unwrap();
+        let m2 = Move::from_string("e7e6", &board).unwrap();
         assert!(board.make_pl_move::<false>(m2));
 
         let game_state_3 = board.clone();
-        let m3 =  Move::from_string("g1f3", &board).unwrap();
+        let m3 = Move::from_string("g1f3", &board).unwrap();
         assert!(board.make_pl_move::<false>(m3));
 
         board.unmake_pl_move(m3);
@@ -1063,39 +1078,29 @@ use crate::chess::square::Square;
         board.make_pl_move_from_string::<true>("g8f6");
         board.make_pl_move_from_string::<true>("f3g1");
         board.make_pl_move_from_string::<true>("f6g8");
-        assert_eq!(
-            board.can_claim_draw(),
-            false,
-            "Should not be draw"
-        );
+        assert_eq!(board.can_claim_draw(), false, "Should not be draw");
         board.make_pl_move_from_string::<true>("g1f3");
         board.make_pl_move_from_string::<true>("g8f6");
         board.make_pl_move_from_string::<true>("f3g1");
         board.make_pl_move_from_string::<true>("f6g8");
-        assert_eq!(
-            board.can_claim_draw(),
-            false,
-            "Should not be draw"
-        );
+        assert_eq!(board.can_claim_draw(), false, "Should not be draw");
 
         board.make_pl_move_from_string::<true>("g1f3");
         board.make_pl_move_from_string::<true>("g8f6");
         board.make_pl_move_from_string::<true>("f3g1");
         board.make_pl_move_from_string::<true>("f6g8");
 
-
-        assert_eq!(
-            board.can_claim_draw(),
-            true,
-            "Should be draw"
-        );
+        assert_eq!(board.can_claim_draw(), true, "Should be draw");
     }
 
     #[test]
     fn attack_mask_defautl_empty() {
         let board = Board::default();
         let attack_mask = board.attack_mask(Square::C4);
-        assert_eq!(attack_mask, EMPTY, "C4 should not be attacked in default position");
+        assert_eq!(
+            attack_mask, EMPTY,
+            "C4 should not be attacked in default position"
+        );
     }
 
     #[test]
@@ -1104,20 +1109,22 @@ use crate::chess::square::Square;
         let attack_mask = board.attack_mask(Square::C3);
         let expected_mask = Bitboard::from_squares(vec![Square::B1, Square::B2, Square::D2]);
 
-        assert_eq!(attack_mask, expected_mask, "C3 should be attacked by pawns and knight in default position");
+        assert_eq!(
+            attack_mask, expected_mask,
+            "C3 should be attacked by pawns and knight in default position"
+        );
     }
 
     #[test]
     fn attack_mask_queen() {
         let mut board = Board::default();
         board.make_pl_move_from_string::<false>("e2e4");
-       
+
         let attack_mask = board.attack_mask(Square::F3);
         let expected_mask = Bitboard::from_squares(vec![Square::G1, Square::G2, Square::D1]);
 
         assert_eq!(attack_mask, expected_mask, "Attack mask is not correct");
     }
-
 
     #[test]
     fn lva_default() {
@@ -1129,8 +1136,10 @@ use crate::chess::square::Square;
 
     #[test]
     fn test_attack_mask_diag() {
-        let board = Board::from_fen("rnb1kb1r/pppp1ppp/4n3/4p1q1/4P3/8/PPPQ1PPP/RNB1KBNR w KQkq - 0 1").unwrap();
-        let attacked_square =  Square::G5;
+        let board =
+            Board::from_fen("rnb1kb1r/pppp1ppp/4n3/4p1q1/4P3/8/PPPQ1PPP/RNB1KBNR w KQkq - 0 1")
+                .unwrap();
+        let attacked_square = Square::G5;
         let attack_mask = board.attack_mask(attacked_square);
         let attacker = board.get_lva::<WhiteSide>(attack_mask);
         assert_eq!(attacker, Square::D2, "Wrong LVA");
@@ -1138,17 +1147,25 @@ use crate::chess::square::Square;
 
         let new_attack_mask = attack_mask ^ attacker.to_bitboard();
         occupied ^= attacker.to_bitboard();
-        let updatet_attack_mask = board.update_attack_board::<WhiteSide>(attacked_square, new_attack_mask, occupied, EMPTY);
-        
-        let next_attacker = board.get_lva::<WhiteSide>(updatet_attack_mask);
-        assert_eq!(next_attacker, Square::C1, "Bishop xraid attack square, but it wasnt noticed!");
+        let updatet_attack_mask = board.update_attack_board::<WhiteSide>(
+            attacked_square,
+            new_attack_mask,
+            occupied,
+            EMPTY,
+        );
 
+        let next_attacker = board.get_lva::<WhiteSide>(updatet_attack_mask);
+        assert_eq!(
+            next_attacker,
+            Square::C1,
+            "Bishop xraid attack square, but it wasnt noticed!"
+        );
     }
 
     #[test]
     fn test_attack_mask_straight() {
         let board = Board::from_fen("3k4/3r4/3q4/8/3Q4/8/3R4/3K4 w - - 0 1").unwrap();
-        let attacked_square =  Square::D5;
+        let attacked_square = Square::D5;
         let attack_mask = board.attack_mask(attacked_square);
 
         let attacker = board.get_lva::<WhiteSide>(attack_mask);
@@ -1157,12 +1174,18 @@ use crate::chess::square::Square;
 
         let new_attack_mask = attack_mask ^ attacker.to_bitboard();
         occupied ^= attacker.to_bitboard();
-        let updatet_attack_mask = board.update_attack_board::<WhiteSide>(attacked_square, new_attack_mask, occupied, EMPTY);
-        
+        let updatet_attack_mask = board.update_attack_board::<WhiteSide>(
+            attacked_square,
+            new_attack_mask,
+            occupied,
+            EMPTY,
+        );
+
         let next_attacker = board.get_lva::<WhiteSide>(updatet_attack_mask);
-        assert_eq!(next_attacker, Square::D2, "Bishop xraid attack square, but it wasnt noticed!");
-
+        assert_eq!(
+            next_attacker,
+            Square::D2,
+            "Bishop xraid attack square, but it wasnt noticed!"
+        );
     }
-    
-
 }
