@@ -253,6 +253,7 @@ impl NegamaxTT {
         let mut sorter = AdvancedSorting::new(tt_move);
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
+        let mut any_move = NULL_MOVE;
         while let Some(m) = sorter.next(
             board,
             &self.info.killer_table[ply],
@@ -279,6 +280,7 @@ impl NegamaxTT {
                     alpha = value;
                     ntype = Ntype::Exact;
                 }
+                any_move = m;
                 if alpha >= beta {
                     break;
                 }
@@ -347,6 +349,13 @@ impl NegamaxTT {
         if best_move != NULL_MOVE {
             return Some(SearchResult {
                 best_move: best_move,
+                evaluation: alpha,
+                nodes_searched: self.info.nodes_searched,
+                depth: depth,
+            });
+        } else if any_move != NULL_MOVE {
+            return Some(SearchResult {
+                best_move: any_move,
                 evaluation: alpha,
                 nodes_searched: self.info.nodes_searched,
                 depth: depth,
