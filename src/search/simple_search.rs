@@ -2,7 +2,7 @@ use std::i16;
 use std::time::{Duration, Instant};
 
 use crate::chess::board::Board;
-use crate::chess::board::evaluation::{NEG_INFINITY, POSITIVE_INFINITY};
+use crate::chess::board::evaluation::{CHECK_MATE_THRESHOLD, NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::{Move, NULL_MOVE};
 use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::Ntype::Exact;
@@ -72,7 +72,7 @@ impl Negamax {
             }
         }
         if num_moves_found == 0 {
-            let res = board.result();
+            let res = board.result(board.in_check());
             return res;
         }
 
@@ -147,7 +147,10 @@ pub struct NegamaxTT {
 }
 
 impl NegamaxTT {
-    const CHECK_TIME_NODES: u64 = 50000;
+    const CHECK_TIME_NODES: u64 = 100_000;
+    const RFP_BASE: i16 = 60;
+    const RFP_LIN: i16 = 20;
+    const RFP_QUAD: i16 = 10;
 
     pub fn new(ttsize: usize) -> Self {
         Self {
@@ -187,6 +190,20 @@ impl NegamaxTT {
             };
         }
         None
+    }
+
+    #[inline(always)]
+    fn nullmove_depth_possible(depth: u8) -> bool {
+        if depth <= depth / 3 + 3 {
+            return false;
+        }
+        true
+    }
+
+    #[inline(always)]
+    fn rfp_margin(depth: u8) -> i16 {
+        let depth_i16 = depth as i16;
+        Self::RFP_BASE + depth_i16 * Self::RFP_LIN + depth_i16 * depth_i16 * Self::RFP_QUAD
     }
 
     pub fn quiesence_search(&mut self, board: &mut Board, mut alpha: i16, beta: i16) -> i16 {
@@ -268,6 +285,7 @@ impl NegamaxTT {
                     ply + 1,
                     start_time,
                     allowed_duration,
+                    false,
                 );
                 board.unmake_pl_move(m);
 
@@ -315,7 +333,7 @@ impl NegamaxTT {
         }
 
         if self.info.nodes_searched == 0 {
-            let res = board.result();
+            let res = board.result(board.in_check());
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {
@@ -373,6 +391,7 @@ impl NegamaxTT {
         ply: usize,
         start_time: &Instant,
         allowed_duration: &Duration,
+        made_nullmove: bool,
     ) -> i16 {
         if self.info.timed_nodes > Self::CHECK_TIME_NODES {
             if start_time.elapsed() > *allowed_duration {
@@ -398,6 +417,38 @@ impl NegamaxTT {
             return self.quiesence_search(board, alpha, beta);
         }
 
+        let in_check = board.in_check();
+        let has_heavy_material = !board.only_king_and_pawns();
+
+        if has_heavy_material && !in_check {
+            if depth < 7 {
+                let s_eval = board.eval();
+                let margin = Self::rfp_margin(depth);
+
+                if beta < CHECK_MATE_THRESHOLD && s_eval >= beta + margin {
+                    return s_eval;
+                }
+            }
+            if !made_nullmove && Self::nullmove_depth_possible(depth) {
+                let reduction = 3 + depth / 3;
+                board.make_nullmove();
+                let val = -self.negamax_p(
+                    board,
+                    depth - reduction,
+                    -beta,
+                    -beta + 1,
+                    ply + 1,
+                    start_time,
+                    allowed_duration,
+                    true,
+                );
+                board.unmake_nullmove();
+                if val >= beta {
+                    return val;
+                }
+            }
+        }
+
         let mut ntype = Ntype::Upper;
         let mut best_move = NULL_MOVE;
         let mut sorter = AdvancedSorting::new(tt_move);
@@ -419,6 +470,7 @@ impl NegamaxTT {
                     ply + 1,
                     start_time,
                     allowed_duration,
+                    false,
                 );
                 board.unmake_pl_move(m);
 
@@ -451,7 +503,7 @@ impl NegamaxTT {
         }
 
         if num_moves_played == 0 {
-            let res = board.result();
+            let res = board.result(in_check);
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {

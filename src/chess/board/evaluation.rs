@@ -1,11 +1,13 @@
 use crate::chess::board::Board;
 use crate::chess::board::bitboard::EMPTY as EMPTY_BB;
 use crate::chess::constants::Piece::*;
-use crate::chess::constants::{BlackSide, Color, Piece, Side, WhiteSide};
+use crate::chess::constants::{BlackSide, Piece, Side, WhiteSide};
 use crate::chess::square::Square;
 use std::sync::LazyLock;
 
 pub const CHECK_MATE: i16 = i16::MIN + 100;
+// Values that cant be reached through normal evaluation / a bound for checking
+pub const CHECK_MATE_THRESHOLD: i16 = 32_000;
 pub const NEG_INFINITY: i16 = i16::MIN + 2;
 pub const POSITIVE_INFINITY: i16 = -NEG_INFINITY;
 
@@ -116,24 +118,8 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn result(&self) -> i16 {
-        match self.turn {
-            Color::White => {
-                if self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()) {
-                    return CHECK_MATE;
-                }
-                0
-            }
-            Color::Black => {
-                if self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()) {
-                    return CHECK_MATE;
-                }
-                0
-            }
-            _ => {
-                panic!()
-            }
-        }
+    pub fn result(&self, in_check: bool) -> i16 {
+        return if in_check { CHECK_MATE } else { 0 };
     }
 }
 

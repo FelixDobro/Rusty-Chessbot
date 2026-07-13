@@ -1,4 +1,3 @@
-
 use crate::search::SearchLimits;
 
 use crate::chess::board::Board;
@@ -7,22 +6,17 @@ use crate::search::ids::IDSearch;
 
 use std::{
     error::Error,
-    io::{Stdin,stdin}
+    io::{Stdin, stdin},
 };
 
-
-
-pub struct UCIManager<>
-{   
+pub struct UCIManager {
     search: IDSearch,
     board: Board,
     std_in: Stdin,
 }
 
-impl UCIManager
-{
-    pub fn new(search: IDSearch) -> UCIManager
-    {
+impl UCIManager {
+    pub fn new(search: IDSearch) -> UCIManager {
         UCIManager {
             search: search,
             board: Board::default(),
@@ -65,38 +59,36 @@ impl UCIManager
                     "position" => {
                         while let Some(next_token) = tokens.next() {
                             match next_token {
-                            "fen" => {
-                                let fen_parts: Vec<&str> = tokens.by_ref().take(6).collect();
-                                let fen = fen_parts.join(" ");
-                                if let Ok(value) = Board::from_fen(&fen) {
-                                    self.board = value;
+                                "fen" => {
+                                    let fen_parts: Vec<&str> = tokens.by_ref().take(6).collect();
+                                    let fen = fen_parts.join(" ");
+                                    if let Ok(value) = Board::from_fen(&fen) {
+                                        self.board = value;
+                                    }
                                 }
-                            },
 
-                            "moves" => {
-                                while let Some(token) = tokens.next() {
-                                    let m = Move::from_string(token, &self.board)?;
-                                    
-                                    self.board.make_pl_move::<true>(m);
-                                    
+                                "moves" => {
+                                    while let Some(token) = tokens.next() {
+                                        let m = Move::from_string(token, &self.board)?;
+
+                                        self.board.make_pl_move::<true>(m);
+                                    }
                                 }
-                            },
 
-                            "startpos" => {
-                                self.board = Board::default();
-                            }
-                            _ => {}
-                        };
+                                "startpos" => {
+                                    self.board = Board::default();
+                                }
+                                _ => {}
+                            };
                         }
-                    },
+                    }
                     "go" => {
-                    
                         let mut search_depth = None;
                         let mut wtime = None;
                         let mut btime = None;
                         let mut winc = None;
                         let mut binc = None;
-                
+
                         while let Some(param) = tokens.next() {
                             match param {
                                 "depth" => {
@@ -124,21 +116,20 @@ impl UCIManager
                                         binc = val.parse::<u64>().ok();
                                     }
                                 }
-                                _ => {} 
+                                _ => {}
                             }
                         }
                         let limit = if let Some(d) = search_depth {
-                            SearchLimits::depth(d) 
+                            SearchLimits::depth(d)
                         } else {
-                            
                             let remaining_time_ms = if self.board.get_turn().is_white() {
-                                wtime.unwrap_or(5000) 
+                                wtime.unwrap_or(5000)
                             } else {
                                 btime.unwrap_or(5000)
                             };
 
                             let increment = if self.board.get_turn().is_white() {
-                                winc.unwrap_or(5000) 
+                                winc.unwrap_or(5000)
                             } else {
                                 binc.unwrap_or(5000)
                             };
@@ -154,8 +145,20 @@ impl UCIManager
                         if let Some(res) = self.search.search(&mut self.board, &limit) {
                             res.print_info();
                             println!("bestmove {}", res.best_move.to_string());
+                        } else {
+                            println!(
+                                "Warning: Search did not find any move, returning any legal move!"
+                            );
+                            let pseudos = self.board.generate_pseudolegals();
+                            for m in pseudos.as_slice() {
+                                if self.board.make_pl_move::<true>(*m) {
+                                    println!("bestmove {}", m.to_string());
+                                    self.board.unmake_pl_move(*m);
+                                }
+                            }
+                            println!("best")
                         }
-                    },
+                    }
                     _ => {}
                 };
             }

@@ -117,3 +117,31 @@ fn quick_test_perft_1() {
     let mut game = Board::from_fen("8/8/8/8/8/K7/P7/k7 w - - 0 1").unwrap();
     assert_eq!(perft(&mut game, 6), 6249);
 }
+
+#[test]
+fn test_perft_after_nullmove() {
+    let mut normal_board = Board::from_fen("8/8/8/8/8/2kp4/4PP2/2K3N1 b - - 0 1").unwrap();
+    let mut nullmove_board = Board::from_fen("8/8/8/8/8/2kp4/4PP2/2K3N1 w - - 0 1").unwrap();
+    nullmove_board.make_nullmove();
+
+    assert_eq!(
+        perft(&mut nullmove_board, 4),
+        perft(&mut normal_board, 4),
+        "Perft of nullmove board and normal board are not the same"
+    );
+}
+
+#[test]
+fn test_perft_after_nullmove1() {
+    let mut normal_board =
+        Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq").unwrap();
+    let mut nullmove_board =
+        Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq").unwrap();
+    nullmove_board.make_nullmove();
+
+    assert_eq!(
+        perft(&mut nullmove_board, 4),
+        perft(&mut normal_board, 4),
+        "Perft of nullmove board and normal board are not the same"
+    );
+}

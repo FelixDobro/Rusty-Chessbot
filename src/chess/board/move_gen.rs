@@ -607,11 +607,47 @@ impl Board {
             _ => panic!("No ones turn?"),
         }
     }
+
+    pub fn make_nullmove(&mut self) {
+        debug_assert!(
+            self.can_make_nullmove(10, false, self.in_check()),
+            "Cannot make nullmove"
+        );
+
+        let undo_info = UndoInfo {
+            castling_rights: self.castling_rights,
+            en_passant_square: self.en_passant,
+            halfmove_clock: self.halfmoves,
+            hash: self.hash,
+            captured_piece: Empty,
+            last_eg: self.eval_eg,
+            last_mg: self.eval_mg,
+            last_phase: self.game_phase,
+        };
+
+        self.undo_stack.push(undo_info);
+        self.turn = self.turn.opposite();
+        self.update_move_hash();
+        self.update_en_passant_hash();
+        self.en_passant = EMPTY_BB;
+    }
+
+    pub fn unmake_nullmove(&mut self) {
+        let undo_info = self.undo_stack.pop();
+        self.en_passant = undo_info.en_passant_square;
+        self.hash = undo_info.hash;
+        self.halfmoves = undo_info.halfmove_clock;
+        self.turn = self.turn.opposite();
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::chess::{board::Board, chess_move::Move};
+    use crate::chess::{
+        board::{Board, UndoStack},
+        chess_move::Move,
+        constants::Color::Black,
+    };
 
     #[test]
     fn default_captures() {
@@ -633,5 +669,24 @@ mod test {
             Move::from_string("f1b5", &board).unwrap(),
             "Bishop should be able to capture pawn"
         );
+    }
+
+    #[test]
+    fn make_unmake_null_move() {
+        let mut board = Board::default();
+        let initial = board.clone();
+        let initial_hash = board.hash;
+        board.make_nullmove();
+        assert_eq!(board.turn, Black, "Null move didnt change side");
+
+        assert_ne!(
+            initial_hash,
+            board.get_hash(),
+            "Hashes did not change accordingly"
+        );
+        board.unmake_nullmove();
+        board.undo_stack = Box::new(UndoStack::new());
+        println!("{}", board.undo_stack == initial.undo_stack);
+        assert_eq!(board, initial, "Boards should be the same after undo");
     }
 }

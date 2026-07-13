@@ -592,6 +592,35 @@ impl Board {
         attack_mask
     }
 
+    pub fn only_king_and_pawns(&self) -> bool {
+        let offset = self.turn.offset();
+        let bishops = self.piece_bb[offset + Bishop.index()];
+        let rooks = self.piece_bb[offset + Rook.index()];
+        let queens = self.piece_bb[offset + Queen.index()];
+        let knights = self.piece_bb[offset + Knight.index()];
+
+        bishops | rooks | queens | knights == EMPTY_BB
+    }
+
+    #[inline(always)]
+    pub fn can_make_nullmove(&self, depth: u8, check: bool, made_nullmove: bool) -> bool {
+        if check || made_nullmove {
+            return false;
+        }
+        if depth <= depth / 3 + 3 {
+            return false;
+        }
+        !self.only_king_and_pawns()
+    }
+
+    pub fn in_check(&self) -> bool {
+        match self.turn {
+            White => self.sq_attacked_by::<BlackSide>(self.get_king_square::<WhiteSide>()),
+            Black => self.sq_attacked_by::<WhiteSide>(self.get_king_square::<BlackSide>()),
+            _ => panic!(),
+        }
+    }
+
     pub fn sq_attacked_by<S: Side>(&self, sq: Square) -> bool {
         let attacker_pawns = self.piece_bb[S::OFFSET + Pawn.index()];
         if (PAWN_ATTACKS[S::OPPOSITE::INDEX][sq.index()] & attacker_pawns) > EMPTY_BB {
@@ -824,7 +853,7 @@ mod test {
     use crate::chess::board::Board;
     use crate::chess::board::bitboard::{Bitboard, EMPTY};
     use crate::chess::chess_move::Move;
-    use crate::chess::constants::WhiteSide;
+    use crate::chess::constants::{BlackSide, WhiteSide};
     use crate::chess::square::Square;
 
     #[test]
@@ -832,7 +861,7 @@ mod test {
         assert_eq!(
             Board::default().count_material(),
             0,
-            "Default evaluation is non Zero"
+            "Default  // Ersetze das assert_eq!(board, initial, ...) durch: evaluation is non Zero"
         );
     }
 
@@ -1187,5 +1216,39 @@ mod test {
             Square::D2,
             "Bishop xraid attack square, but it wasnt noticed!"
         );
+    }
+
+    #[test]
+    fn has_only_pawns() {
+        let board = Board::from_fen("8/8/8/8/2k1p3/8/4PP2/2K5 w - - 0 1").unwrap();
+        assert!(
+            board.only_king_and_pawns(),
+            "White side has only king and pawns"
+        );
+        assert!(
+            board.only_king_and_pawns(),
+            "Black side has only king and pawns"
+        );
+    }
+
+    #[test]
+    fn has_more_than_pawns() {
+        let board = Board::from_fen("8/8/8/8/2k1p3/8/4PP2/2K3N1 w - - 0 1").unwrap();
+        assert!(!board.only_king_and_pawns(), "White side has a knight");
+        let board = Board::from_fen("8/8/8/8/2k1p3/8/4PP2/2K3N1 b - - 0 1").unwrap();
+        assert!(board.only_king_and_pawns(), "Blac side has only pawns");
+        assert!(!board.can_make_nullmove(10, false, false))
+    }
+
+    #[test]
+    fn white_can_make_nullmove() {
+        let board = Board::from_fen("8/8/8/8/2k1p3/8/4PP2/2K3N1 w - - 0 1").unwrap();
+        assert!(board.can_make_nullmove(10, false, false));
+    }
+
+    #[test]
+    fn cannot_make_nullmove_check() {
+        let board = Board::from_fen("8/8/8/8/8/2k5/3pPP2/2K3N1 w - d3 0 1").unwrap();
+        assert!(!board.can_make_nullmove(10, false, true));
     }
 }
