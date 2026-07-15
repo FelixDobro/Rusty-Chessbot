@@ -37,8 +37,8 @@ impl IDSearch {
             if let Some(result) = self.search_algo.negamax(
                 board,
                 current_depth,
-                &start_time,
-                &hard_duration,
+                start_time,
+                hard_duration,
                 25,
                 25,
                 last_val,
@@ -55,8 +55,8 @@ impl IDSearch {
         self.search_algo.negamax(
             board,
             depth,
-            &Instant::now(),
-            &Duration::from_hours(GLOBAL_MAX_SEARCH_DURATION_H),
+            Instant::now(),
+            Duration::from_hours(GLOBAL_MAX_SEARCH_DURATION_H),
             POSITIVE_INFINITY,
             NEG_INFINITY,
             0,
