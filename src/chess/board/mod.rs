@@ -853,7 +853,7 @@ mod test {
     use crate::chess::board::Board;
     use crate::chess::board::bitboard::{Bitboard, EMPTY};
     use crate::chess::chess_move::Move;
-    use crate::chess::constants::{BlackSide, WhiteSide};
+    use crate::chess::constants::WhiteSide;
     use crate::chess::square::Square;
 
     #[test]

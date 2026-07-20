@@ -43,7 +43,7 @@ pub struct AdvancedSorting {
 impl AdvancedSorting {
     pub const HASH_M_VAL: i16 = 1000;
     pub const KILLER_MOVE_BONUS: i16 = 15000;
-    pub const HISTORY_MAX: i16 = 100;
+    pub const HISTORY_MAX: i16 = 2i16.pow(13);
     pub const HISTORY_MIN: i16 = -Self::HISTORY_MAX;
     pub const PIECE_VALS: [i16; 7] = [1, 2, 3, 4, 5, 6, 0];
     pub const MAX_PIECE_VAL: i16 = 6;
@@ -163,34 +163,6 @@ impl AdvancedSorting {
             moves_evaluated.push(*m, value);
         }
         self.quiets = moves_evaluated;
-    }
-
-    #[inline(always)]
-    pub fn update_history(
-        &mut self,
-        m: Move,
-        depth: u8,
-        turn: Color,
-        history_table: &mut [[[i16; 64]; 64]; 2],
-    ) {
-        if m == self.tt_move {
-            self.quiets.score_history_move(
-                m,
-                (depth * depth) as i16,
-                turn,
-                history_table,
-                Self::HISTORY_MIN,
-                Self::HISTORY_MAX,
-            );
-        } else {
-            self.quiets.history_update(
-                depth,
-                turn,
-                history_table,
-                Self::HISTORY_MIN,
-                Self::HISTORY_MAX,
-            );
-        }
     }
 
     #[inline(always)]
