@@ -332,6 +332,8 @@ impl NegamaxTT {
         let mut best_move = NULL_MOVE;
         let mut any_move = NULL_MOVE;
         let mut first_move = true;
+        let mut quiets_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
+        let current_turn = board.get_turn();
 
         while let Some(m) = sorter.next(
             board,
@@ -339,6 +341,9 @@ impl NegamaxTT {
             &self.info.history_tables.main_history,
         ) {
             if board.make_pl_move::<true>(m) {
+                if m.is_quiet() {
+                    quiets_played.push(m);
+                }
                 let mut value;
                 if first_move {
                     value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply + 1, false);
@@ -364,6 +369,12 @@ impl NegamaxTT {
                 }
                 any_move = m;
                 if alpha >= beta {
+                    if m.is_quiet() {
+                        quiets_played.pop();
+                        self.info.append_killer_move(ply, m);
+                        self.info.punish_quiets(&quiets_played, depth, current_turn);
+                        self.info.reward_quiet(m, depth, current_turn);
+                    }
                     break;
                 }
             }
