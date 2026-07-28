@@ -24,7 +24,6 @@ impl IDSearch {
         let hard_duration = Duration::from_millis(hard_bound as u64);
         let soft_bound = Duration::from_millis(soft_bound);
 
-        self.search_algo.reset_killers();
         let mut best_res: Option<SearchResult> = None;
 
         for current_depth in 1..MAX_SEARCH_DEPTH {
@@ -36,7 +35,7 @@ impl IDSearch {
 
             if let Some(result) = self.search_algo.negamax(
                 board,
-                current_depth,
+                current_depth as u8,
                 start_time,
                 hard_duration,
                 25,

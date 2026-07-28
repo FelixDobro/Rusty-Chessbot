@@ -4,7 +4,7 @@ pub mod simple_search;
 use crate::chess::chess_move::Move;
 use crate::chess::chess_move::NULL_MOVE;
 
-pub const MAX_SEARCH_DEPTH: u8 = 64;
+pub const MAX_SEARCH_DEPTH: usize = 64;
 pub const GLOBAL_MAX_SEARCH_DURATION_H: u64 = 100000000u64;
 
 #[cfg(test)]

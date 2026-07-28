@@ -74,6 +74,12 @@ impl UndoStack {
         self.count -= 1;
         self.undo_stack[self.count]
     }
+
+    #[inline(always)]
+    pub fn peek(&self) -> &UndoInfo {
+        debug_assert!(self.count > 0, "Trying to peek from an empty stack");
+        &self.undo_stack[self.count - 1]
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -386,7 +392,7 @@ impl Board {
 
     pub fn king_pattern<S: Side>(&self) -> Bitboard {
         let board = self.piece_bb[S::OFFSET + King.index()];
-        let king_pattern = KING_PATTERNS[board.lsb().usize()];
+        let king_pattern = KING_PATTERNS[board.lsb().index()];
         king_pattern
     }
 
@@ -447,9 +453,9 @@ impl Board {
         let mut moves = EMPTY_BB;
         while bishops != EMPTY_BB {
             let sq = bishops.lsb();
-            let mask = DIAGONAL_LINES[sq.usize()];
+            let mask = DIAGONAL_LINES[sq.index()];
             let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-            moves |= DIAG_LINES_MAGIC[sq.usize()][index as usize];
+            moves |= DIAG_LINES_MAGIC[sq.index()][index as usize];
             bishops.pop_lsb();
         }
 
@@ -457,27 +463,27 @@ impl Board {
     }
 
     pub fn diag_lines_w_bound(&self, sq: Square) -> Bitboard {
-        let mask = DIAGONAL_LINES[sq.usize()];
+        let mask = DIAGONAL_LINES[sq.index()];
         let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-        DIAG_LINES_MAGIC[sq.usize()][index as usize]
+        DIAG_LINES_MAGIC[sq.index()][index as usize]
     }
 
     pub fn diag_lines_occupied(&self, sq: Square, occupied: Bitboard) -> Bitboard {
-        let mask = DIAGONAL_LINES[sq.usize()];
+        let mask = DIAGONAL_LINES[sq.index()];
         let index = unsafe { _pext_u64(occupied.u64(), mask.u64()) };
-        DIAG_LINES_MAGIC[sq.usize()][index as usize]
+        DIAG_LINES_MAGIC[sq.index()][index as usize]
     }
 
     pub fn straight_lines_w_bound(&self, sq: Square) -> Bitboard {
-        let mask = STRAIGHT_LINES[sq.usize()];
+        let mask = STRAIGHT_LINES[sq.index()];
         let index = unsafe { _pext_u64(self.occupied.u64(), mask.u64()) };
-        STRAIGHT_LINES_MAGIC[sq.usize()][index as usize]
+        STRAIGHT_LINES_MAGIC[sq.index()][index as usize]
     }
 
     pub fn straight_lines_occupied(&self, sq: Square, occupied: Bitboard) -> Bitboard {
-        let mask = STRAIGHT_LINES[sq.usize()];
+        let mask = STRAIGHT_LINES[sq.index()];
         let index = unsafe { _pext_u64(occupied.u64(), mask.u64()) };
-        STRAIGHT_LINES_MAGIC[sq.usize()][index as usize]
+        STRAIGHT_LINES_MAGIC[sq.index()][index as usize]
     }
 
     #[inline(always)]
@@ -491,10 +497,10 @@ impl Board {
 
         let knights =
             self.piece_bb[Knight.index()] | self.piece_bb[BlackSide::OFFSET + Knight.index()];
-        attack_mask |= KNIGHT_PATTERNS[sq.usize()] & knights;
+        attack_mask |= KNIGHT_PATTERNS[sq.index()] & knights;
 
         let king = self.piece_bb[King.index()] | self.piece_bb[BlackSide::OFFSET + King.index()];
-        attack_mask |= KING_PATTERNS[sq.usize()] & king;
+        attack_mask |= KING_PATTERNS[sq.index()] & king;
 
         let bishop_queen = self.piece_bb[WhiteSide::OFFSET + Queen.index()]
             | self.piece_bb[WhiteSide::OFFSET + Bishop.index()]
@@ -628,13 +634,13 @@ impl Board {
         }
 
         let attacker_knights = self.piece_bb[S::OFFSET + Knight.index()];
-        if (KNIGHT_PATTERNS[sq.usize()] & attacker_knights) > EMPTY_BB {
+        if (KNIGHT_PATTERNS[sq.index()] & attacker_knights) > EMPTY_BB {
             return true;
         }
 
         let attacking_king = self.piece_bb[S::OFFSET + King.index()];
 
-        if (KING_PATTERNS[sq.usize()] & attacking_king) > EMPTY_BB {
+        if (KING_PATTERNS[sq.index()] & attacking_king) > EMPTY_BB {
             return true;
         }
 
@@ -661,11 +667,26 @@ impl Board {
     }
 
     pub fn get_piece(&self, square: Square) -> Piece {
-        self.piece[square.usize()]
+        self.piece[square.index()]
     }
 
+    #[inline(always)]
     pub fn get_piece_usize(&self, square: Square) -> usize {
-        return self.get_piece(square) as usize;
+        self.get_piece(square) as usize
+    }
+
+    #[inline(always)]
+    pub fn get_piece_w_color(&self, square: Square) -> usize {
+        self.get_piece_usize(square) + self.turn.offset()
+    }
+
+    #[inline(always)]
+    pub fn get_captured(&self, m: Move) -> usize {
+        let captured = self.piece[m.to().index()];
+        if captured != Empty {
+            return captured.index();
+        };
+        Pawn.index()
     }
 
     pub fn count_material(&self) -> i16 {

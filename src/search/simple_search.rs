@@ -7,7 +7,9 @@ use crate::chess::chess_move::{MOVE_GEN_SIZE, Move, MoveList, NULL_MOVE};
 use crate::chess::constants::{Color, NUM_PIECES};
 use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::search::Ntype::Exact;
-use crate::search::{GLOBAL_MAX_SEARCH_DURATION_H, Ntype, SearchResult, TTable, TTableEntry};
+use crate::search::{
+    GLOBAL_MAX_SEARCH_DURATION_H, MAX_SEARCH_DEPTH, Ntype, SearchResult, TTable, TTableEntry,
+};
 
 #[allow(dead_code)]
 pub struct Negamax {
@@ -81,44 +83,227 @@ impl Negamax {
     }
 }
 
-struct HistroyT {
-    main_history: [[[i16; 64]; 64]; 2],
-    continuation_history: [[[i16; 64]; NUM_PIECES * 2]; Self::NUM_PLY_CONTINUATION],
-    capture_history: [[[i16; NUM_PIECES - 1]; 64]; NUM_PIECES * 2],
+#[derive(Debug, Clone, Copy)]
+struct StackItem {
+    m: Move,
+    moved_piece: usize,
+}
+
+impl StackItem {
+    pub fn new(m: Move, moved_piece: usize) -> Self {
+        debug_assert!(moved_piece < 12, "Moved piece is invalid");
+        return Self { m, moved_piece };
+    }
+}
+
+pub struct SearchStack<const N: usize> {
+    count: usize,
+    moves: [StackItem; N],
+}
+
+impl<const N: usize> SearchStack<N> {
+    pub fn new() -> Self {
+        SearchStack {
+            count: 0,
+            moves: [StackItem::new(NULL_MOVE, 0); N],
+        }
+    }
+
+    #[inline(always)]
+    pub fn push(&mut self, item: StackItem) {
+        self.moves[self.count] = item;
+        self.count += 1;
+    }
+
+    #[inline(always)]
+    pub fn pop(&mut self) {
+        self.count -= 1;
+    }
+
+    #[inline(always)]
+    pub fn as_slice<const MAX_PLY: usize>(&self) -> &[StackItem] {
+        let start = self.count.saturating_sub(MAX_PLY);
+
+        &self.moves[start..self.count]
+    }
+}
+
+type ContinuationHistory = [[[[i16; 64]; NUM_PIECES * 2]; 64]; NUM_PIECES * 2];
+type CaptureHistory = [[[i16; NUM_PIECES]; 64]; NUM_PIECES * 2];
+pub struct HistroyT {
+    main_history: Box<[[[i16; 64]; 64]; 2]>,
+    continuation_history: Box<[ContinuationHistory; Self::NUM_PLY_CONTINUATION]>,
+    capture_history: Box<CaptureHistory>,
 }
 
 impl HistroyT {
     pub const NUM_PLY_CONTINUATION: usize = 6;
-    pub const HISTORY_MAX: i16 = 2i16.pow(13);
-    pub const HISTORY_MIN: i16 = -Self::HISTORY_MAX;
+    pub const HISTORY_MAX: i32 = 2i32.pow(13);
+    pub const HISTORY_MIN: i32 = -Self::HISTORY_MAX;
 
     pub fn new() -> Self {
         return Self {
-            main_history: [[[0i16; 64]; 64]; 2],
-            continuation_history: [[[0i16; 64]; NUM_PIECES * 2]; Self::NUM_PLY_CONTINUATION],
-            capture_history: [[[0i16; NUM_PIECES - 1]; 64]; NUM_PIECES * 2],
+            main_history: Box::new([[[0i16; 64]; 64]; 2]),
+            continuation_history: unsafe { Box::new_zeroed().assume_init() },
+            capture_history: Box::new([[[0i16; NUM_PIECES]; 64]; NUM_PIECES * 2]),
         };
     }
 
     #[inline(always)]
-    pub fn main_history_update(&mut self, m: Move, bonus: i16, turn_idx: usize) {
-        let clamped_bonus = Self::HISTORY_MIN.max(bonus).min(Self::HISTORY_MAX);
-
-        self.main_history[turn_idx][m.from().index()][m.to().index()] += clamped_bonus
-            - self.main_history[turn_idx][m.from().index()][m.to().index()] * clamped_bonus.abs()
-                / Self::HISTORY_MAX;
+    pub fn main_history_update(&mut self, m: Move, bonus: i32, turn_idx: usize) {
+        let prev_val = self.main_history[turn_idx][m.from().index()][m.to().index()] as i32;
+        self.main_history[turn_idx][m.from().index()][m.to().index()] +=
+            (bonus - prev_val * bonus.abs() / Self::HISTORY_MAX) as i16;
     }
 
-    pub fn punish_quiets(&mut self, quiets: &MoveList<MOVE_GEN_SIZE>, depth: u8, turn: Color) {
-        let malus = (depth * depth) as i16 * -1;
+    #[inline(always)]
+    pub fn continuation_history_update(
+        &mut self,
+        prev_m: Move,
+        prev_moved_piece: usize,
+        cur_m: Move,
+        cur_moved_piece: usize,
+        ply: usize,
+        bonus: i32,
+    ) {
+        let prev_val = self.continuation_history[ply][prev_moved_piece][prev_m.to().index()]
+            [cur_moved_piece][cur_m.to().index()] as i32;
+        self.continuation_history[ply][prev_moved_piece][prev_m.to().index()][cur_moved_piece]
+            [cur_m.to().index()] += (bonus - prev_val * bonus.abs() / Self::HISTORY_MAX) as i16;
+    }
+
+    pub fn capture_history_update(
+        &mut self,
+        moved_piece: usize,
+        captured_piece: usize,
+        m: Move,
+        bonus: i32,
+    ) {
+        let prev_val = self.capture_history[moved_piece][m.to().index()][captured_piece] as i32;
+        self.capture_history[moved_piece][m.to().index()][captured_piece] +=
+            (bonus - prev_val * bonus.abs() / Self::HISTORY_MAX) as i16;
+    }
+
+    pub fn reward_capture(&mut self, board: &Board, m: Move, depth: u8) {
+        let bonus = (depth * depth) as i32;
+        let clamped_bonus = Self::HISTORY_MIN.max(bonus).min(Self::HISTORY_MAX);
+        let moved_piece = board.get_piece_w_color(m.from());
+        let captured_piece = board.get_captured(m);
+        self.capture_history_update(moved_piece, captured_piece, m, clamped_bonus);
+    }
+
+    pub fn reward_continuation(
+        &mut self,
+        search_stack: &SearchStack<MAX_SEARCH_DEPTH>,
+        depth: u8,
+        m: Move,
+        piece: usize,
+    ) {
+        let bonus = (depth * depth) as i32;
+        let clamped_bonus = Self::HISTORY_MIN.max(bonus).min(Self::HISTORY_MAX);
+        search_stack
+            .as_slice::<{ Self::NUM_PLY_CONTINUATION }>()
+            .iter()
+            .rev()
+            .enumerate()
+            .for_each(|(ply, item)| {
+                self.continuation_history_update(
+                    item.m,
+                    item.moved_piece,
+                    m,
+                    piece,
+                    ply,
+                    clamped_bonus,
+                );
+            });
+    }
+
+    pub fn punish_continuation(
+        &mut self,
+        quiets: &MoveList<MOVE_GEN_SIZE>,
+        search_stack: &SearchStack<MAX_SEARCH_DEPTH>,
+        depth: u8,
+        board: &Board,
+    ) {
+        let malus = (depth * depth) as i32 * -1;
+        let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
+
+        search_stack
+            .as_slice::<{ Self::NUM_PLY_CONTINUATION }>()
+            .iter()
+            .rev()
+            .enumerate()
+            .for_each(|(ply, item)| {
+                for m in quiets.as_slice() {
+                    self.continuation_history_update(
+                        item.m,
+                        item.moved_piece,
+                        *m,
+                        board.get_piece_w_color(m.from()),
+                        ply,
+                        clamped_bonus,
+                    )
+                }
+            });
+    }
+
+    pub fn punish_captures(
+        &mut self,
+        captures: &MoveList<MOVE_GEN_SIZE>,
+        board: &Board,
+        depth: u8,
+    ) {
+        let malus = (depth * depth) as i32 * -1;
+        let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
+
+        captures.as_slice().iter().for_each(|&m| {
+            debug_assert!(m.is_capture(), "Move should be capture");
+            let moved_piece = board.get_piece_w_color(m.from());
+            let captured_piece = board.get_captured(m);
+            self.capture_history_update(moved_piece, captured_piece, m, clamped_bonus);
+        });
+    }
+
+    pub fn punish_main(&mut self, quiets: &MoveList<MOVE_GEN_SIZE>, depth: u8, turn: Color) {
+        let malus = (depth * depth) as i32 * -1;
+        let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
         for m in quiets.as_slice() {
-            self.main_history_update(*m, malus, turn.index());
+            self.main_history_update(*m, clamped_bonus, turn.index());
         }
+    }
+
+    #[inline(always)]
+    pub fn continuation_val(
+        &self,
+        search_stack: &SearchStack<MAX_SEARCH_DEPTH>,
+        moved_piece: usize,
+        m: Move,
+    ) -> i32 {
+        search_stack
+            .as_slice::<{ Self::NUM_PLY_CONTINUATION }>()
+            .iter()
+            .rev()
+            .enumerate()
+            .map(|(ply, item)| {
+                self.continuation_history[ply][item.moved_piece][item.m.to().index()][moved_piece]
+                    [m.to().index()] as i32
+            })
+            .sum()
+    }
+
+    #[inline(always)]
+    pub fn main_val(&self, turn: Color, m: Move) -> i32 {
+        self.main_history[turn.index()][m.from().index()][m.to().index()] as i32
+    }
+
+    #[inline(always)]
+    pub fn capture_val(&self, moved_piece: usize, m: Move, captured_piece: usize) -> i32 {
+        self.capture_history[moved_piece][m.to().index()][captured_piece] as i32
     }
 }
 
 struct SearchInfo {
-    killer_table: [[Move; 3]; 64],
+    search_stack: SearchStack<MAX_SEARCH_DEPTH>,
     history_tables: HistroyT,
     age: u8,
     nodes_searched: u64,
@@ -135,7 +320,7 @@ impl SearchInfo {
             nodes_searched: 0,
             timed_nodes: 0,
             time_fail: false,
-            killer_table: [[NULL_MOVE; 3]; 64],
+            search_stack: SearchStack::new(),
             history_tables: HistroyT::new(),
             start_time: Instant::now(),
             allowed_duration: Duration::from_hours(GLOBAL_MAX_SEARCH_DURATION_H),
@@ -148,18 +333,15 @@ impl SearchInfo {
         self.timed_nodes = 0;
         self.time_fail = false;
         self.start_time = start_time;
-        self.allowed_duration = allowed_duration
+        self.allowed_duration = allowed_duration;
+        self.search_stack = SearchStack::new();
     }
 
-    pub fn reset_killers(&mut self) {
-        self.killer_table = [[NULL_MOVE; 3]; 64];
+    pub fn push(&mut self, item: StackItem) {
+        self.search_stack.push(item);
     }
-
-    #[inline(always)]
-    pub fn append_killer_move(&mut self, ply: usize, m: Move) {
-        self.killer_table[ply][2] = self.killer_table[ply][1];
-        self.killer_table[ply][1] = self.killer_table[ply][0];
-        self.killer_table[ply][0] = m;
+    pub fn pop(&mut self) {
+        self.search_stack.pop();
     }
 
     #[inline(always)]
@@ -184,14 +366,47 @@ impl SearchInfo {
     }
 
     #[inline(always)]
-    pub fn punish_quiets(&mut self, quiets: &MoveList<MOVE_GEN_SIZE>, depth: u8, turn: Color) {
-        self.history_tables.punish_quiets(quiets, depth, turn);
+    pub fn punish_main(&mut self, quiets: &MoveList<MOVE_GEN_SIZE>, depth: u8, turn: Color) {
+        self.history_tables.punish_main(quiets, depth, turn);
     }
 
     #[inline(always)]
-    pub fn reward_quiet(&mut self, m: Move, depth: u8, turn: Color) {
+    pub fn reward_main(&mut self, m: Move, depth: u8, turn: Color) {
+        let bonus = (depth * depth) as i32;
+        let clamped_bonus = HistroyT::HISTORY_MIN.max(bonus).min(HistroyT::HISTORY_MAX);
         self.history_tables
-            .main_history_update(m, (depth * depth) as i16, turn.index());
+            .main_history_update(m, clamped_bonus, turn.index());
+    }
+
+    #[inline(always)]
+    pub fn reward_capture(&mut self, m: Move, board: &Board, depth: u8) {
+        self.history_tables.reward_capture(board, m, depth);
+    }
+
+    #[inline(always)]
+    pub fn punish_captures(
+        &mut self,
+        captures: &MoveList<MOVE_GEN_SIZE>,
+        board: &Board,
+        depth: u8,
+    ) {
+        self.history_tables.punish_captures(captures, board, depth);
+    }
+
+    #[inline(always)]
+    pub fn punish_continuation(
+        &mut self,
+        quiets: &MoveList<MOVE_GEN_SIZE>,
+        board: &Board,
+        depth: u8,
+    ) {
+        self.history_tables
+            .punish_continuation(quiets, &self.search_stack, depth, board);
+    }
+
+    pub fn reward_continuation(&mut self, m: Move, depth: u8, piece: usize) {
+        self.history_tables
+            .reward_continuation(&self.search_stack, depth, m, piece);
     }
 }
 
@@ -203,7 +418,7 @@ pub struct NegamaxTT {
 impl NegamaxTT {
     const CHECK_TIME_NODES: u64 = 100_000;
     const RFP_BASE: i16 = 60;
-    const RFP_LIN: i16 = 20;
+    const RFP_LIN: i16 = 30;
     const RFP_QUAD: i16 = 10;
 
     pub fn new(ttsize: usize) -> Self {
@@ -219,11 +434,6 @@ impl NegamaxTT {
             25 => 100,
             _ => POSITIVE_INFINITY,
         }
-    }
-
-    #[inline(always)]
-    pub fn reset_killers(&mut self) {
-        self.info.reset_killers();
     }
 
     #[inline(always)]
@@ -290,7 +500,8 @@ impl NegamaxTT {
             alpha = stand_part;
         }
 
-        let captures = AdvancedSorting::sort_only_captures(board, tt_move);
+        let captures =
+            AdvancedSorting::sort_only_captures(board, tt_move, &self.info.history_tables);
         for &m in captures.as_slice() {
             if board.make_pl_move::<true>(m) {
                 let score = -self.quiesence_search(board, -beta, -alpha);
@@ -333,17 +544,22 @@ impl NegamaxTT {
         let mut any_move = NULL_MOVE;
         let mut first_move = true;
         let mut quiets_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
+        let mut captures_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
         let current_turn = board.get_turn();
 
-        while let Some(m) = sorter.next(
-            board,
-            &self.info.killer_table[ply],
-            &self.info.history_tables.main_history,
-        ) {
+        while let Some(m) = sorter.next(board, &self.info.history_tables, &self.info.search_stack) {
+            let moved_piece = board.get_piece_w_color(m.from());
+
+            let stack_item = StackItem::new(m, moved_piece);
             if board.make_pl_move::<true>(m) {
+                self.info.push(stack_item);
+
                 if m.is_quiet() {
                     quiets_played.push(m);
+                } else if m.is_capture() {
+                    captures_played.push(m);
                 }
+
                 let mut value;
                 if first_move {
                     value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply + 1, false);
@@ -357,6 +573,7 @@ impl NegamaxTT {
                 }
 
                 board.unmake_pl_move(m);
+                self.info.pop();
 
                 if self.info.time_fail {
                     return None;
@@ -367,13 +584,20 @@ impl NegamaxTT {
                     alpha = value;
                     ntype = Ntype::Exact;
                 }
+
                 any_move = m;
+
                 if alpha >= beta {
                     if m.is_quiet() {
                         quiets_played.pop();
-                        self.info.append_killer_move(ply, m);
-                        self.info.punish_quiets(&quiets_played, depth, current_turn);
-                        self.info.reward_quiet(m, depth, current_turn);
+                        self.info.punish_main(&quiets_played, depth, current_turn);
+                        self.info.reward_main(m, depth, current_turn);
+                        self.info.punish_continuation(&quiets_played, board, depth);
+                        self.info.reward_continuation(m, depth, moved_piece);
+                    } else if m.is_capture() {
+                        captures_played.pop();
+                        self.info.reward_capture(m, board, depth);
+                        self.info.punish_captures(&captures_played, board, depth);
                     }
                     break;
                 }
@@ -524,15 +748,21 @@ impl NegamaxTT {
         let mut num_moves_played = 0;
         let mut first_move = true;
         let mut quiets_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
-        while let Some(m) = sorter.next(
-            board,
-            &self.info.killer_table[ply],
-            &self.info.history_tables.main_history,
-        ) {
+        let mut captures_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
+
+        while let Some(m) = sorter.next(board, &self.info.history_tables, &self.info.search_stack) {
             debug_assert_ne!(m, NULL_MOVE);
+
+            let moved_piece = board.get_piece_w_color(m.from());
+            let stack_item = StackItem::new(m, moved_piece);
+
             if board.make_pl_move::<true>(m) {
+                self.info.push(stack_item);
                 if m.is_quiet() {
                     quiets_played.push(m);
+                }
+                if m.is_capture() {
+                    captures_played.push(m);
                 }
                 num_moves_played += 1;
                 let mut value;
@@ -548,6 +778,7 @@ impl NegamaxTT {
                 }
 
                 board.unmake_pl_move(m);
+                self.info.pop();
 
                 if self.info.time_fail {
                     return 0;
@@ -565,9 +796,15 @@ impl NegamaxTT {
 
                     if m.is_quiet() {
                         quiets_played.pop();
-                        self.info.append_killer_move(ply, m);
-                        self.info.punish_quiets(&quiets_played, depth, current_turn);
-                        self.info.reward_quiet(m, depth, current_turn);
+                        self.info.punish_main(&quiets_played, depth, current_turn);
+                        self.info.reward_main(m, depth, current_turn);
+                        self.info.punish_continuation(&quiets_played, board, depth);
+                        self.info.reward_continuation(m, depth, moved_piece);
+                    }
+                    if m.is_capture() {
+                        captures_played.pop();
+                        self.info.punish_captures(&captures_played, board, depth);
+                        self.info.reward_capture(m, board, depth);
                     }
                     return beta;
                 }

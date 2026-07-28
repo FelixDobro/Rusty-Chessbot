@@ -10,7 +10,7 @@ impl Board {
             .enumerate()
             .for_each(|(piece_index, mut bb)| {
                 while bb != EMPTY {
-                    let square = bb.lsb().usize();
+                    let square = bb.lsb().index();
                     super_hash ^= ZOBRIST_TABLE.pieces[piece_index][square];
                     bb.pop_lsb();
                 }
@@ -28,7 +28,7 @@ impl Board {
 
     #[inline(always)]
     pub fn update_hash_piece<S: Side>(&mut self, p: Piece, square: Square) {
-        self.hash ^= ZOBRIST_TABLE.pieces[p.index() + S::OFFSET][square.usize()]
+        self.hash ^= ZOBRIST_TABLE.pieces[p.index() + S::OFFSET][square.index()]
     }
 
     #[inline(always)]

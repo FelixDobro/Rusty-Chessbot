@@ -4,7 +4,7 @@ pub mod advanced_sorting;
 
 #[derive(Debug, Clone)]
 pub struct EvaluatedMoveList<const N: usize> {
-    moves: MaybeUninit<[(Move, i16); N]>,
+    moves: MaybeUninit<[(Move, i32); N]>,
     count: usize,
     search_index: usize,
 }
@@ -19,8 +19,8 @@ impl<const N: usize> EvaluatedMoveList<N> {
     }
 
     #[inline(always)]
-    pub fn push(&mut self, m: Move, val: i16) {
-        let array_ptr = self.moves.as_mut_ptr() as *mut (Move, i16);
+    pub fn push(&mut self, m: Move, val: i32) {
+        let array_ptr = self.moves.as_mut_ptr() as *mut (Move, i32);
         unsafe {
             let target_ptr = array_ptr.add(self.count);
             target_ptr.write((m, val));
@@ -29,9 +29,9 @@ impl<const N: usize> EvaluatedMoveList<N> {
     }
 
     #[inline(always)]
-    fn get_item(&self, index: usize) -> (Move, i16) {
+    fn get_item(&self, index: usize) -> (Move, i32) {
         debug_assert!(index < self.count);
-        let array_ptr: *const (Move, i16) = self.moves.as_ptr() as *const (Move, i16);
+        let array_ptr: *const (Move, i32) = self.moves.as_ptr() as *const (Move, i32);
         unsafe {
             let target_ptr = array_ptr.add(index);
             let entry = target_ptr.read();
@@ -40,9 +40,9 @@ impl<const N: usize> EvaluatedMoveList<N> {
     }
 
     #[inline(always)]
-    fn set_item(&mut self, index: usize, item: (Move, i16)) {
+    fn set_item(&mut self, index: usize, item: (Move, i32)) {
         debug_assert!(index < self.count);
-        let array_ptr: *mut (Move, i16) = self.moves.as_mut_ptr() as *mut (Move, i16);
+        let array_ptr: *mut (Move, i32) = self.moves.as_mut_ptr() as *mut (Move, i32);
         unsafe {
             let target_ptr = array_ptr.add(index);
             target_ptr.write(item);
@@ -101,7 +101,6 @@ impl<const N: usize> EvaluatedMoveList<N> {
 #[cfg(test)]
 mod test {
     use crate::chess::chess_move::MOVE_GEN_SIZE;
-    use crate::chess::constants::Color;
     use crate::{
         chess::{chess_move::Move, square::Square},
         move_sorting::EvaluatedMoveList,

@@ -127,7 +127,7 @@ impl Board {
         let king_board = self.piece_bb[S::OFFSET + King.index()];
 
         let from_sqaure = king_board.lsb();
-        let pattern_board = KING_PATTERNS[from_sqaure.usize()];
+        let pattern_board = KING_PATTERNS[from_sqaure.index()];
 
         if G::SHOULD_GEN_QUIETS {
             let mut normal_moves =
@@ -253,7 +253,7 @@ impl Board {
         while knight_board != EMPTY_BB {
             let from_sqaure = knight_board.lsb();
 
-            let pattern_board = KNIGHT_PATTERNS[from_sqaure.usize()];
+            let pattern_board = KNIGHT_PATTERNS[from_sqaure.index()];
 
             if G::SHOULD_GEN_QUIETS {
                 let mut normal_moves =
@@ -450,7 +450,7 @@ impl Board {
         self.update_hash_piece::<S>(piece_moved, from);
         self.update_hash_piece::<S>(piece_moved, to);
         self.halfmoves += 1;
-        self.castling_rights &= !CASTLING_RIGHTS[from.usize()];
+        self.castling_rights &= !CASTLING_RIGHTS[from.index()];
 
         if EVAL {
             self.rm_eval::<S>(piece_moved, from);
@@ -462,7 +462,7 @@ impl Board {
             self.color_bb[S::OPPOSITE::INDEX] ^= to_board;
             self.update_hash_piece::<S::OPPOSITE>(piece_captured, to);
             self.halfmoves = 0;
-            self.castling_rights &= !CASTLING_RIGHTS[to.usize()];
+            self.castling_rights &= !CASTLING_RIGHTS[to.index()];
             if EVAL {
                 self.rm_eval::<S::OPPOSITE>(piece_captured, to);
                 self.rm_p_eval::<S::OPPOSITE>(piece_captured);
