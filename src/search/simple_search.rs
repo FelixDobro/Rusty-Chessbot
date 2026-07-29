@@ -84,7 +84,7 @@ impl Negamax {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct StackItem {
+pub struct StackItem {
     m: Move,
     moved_piece: usize,
 }
