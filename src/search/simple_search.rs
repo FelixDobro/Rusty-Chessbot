@@ -416,10 +416,23 @@ pub struct NegamaxTT {
 }
 
 impl NegamaxTT {
-    const CHECK_TIME_NODES: u64 = 100_000;
+    const CHECK_TIME_NODES: u64 = 200_000;
+
+    // Reverse Futility Pruning hyperparams
     const RFP_BASE: i16 = 60;
     const RFP_LIN: i16 = 30;
     const RFP_QUAD: i16 = 10;
+
+    // Prob Cut hyperparams
+    const PROB_MIN_DEPTH: u8 = 5;
+    const PROB_DEPTH_REDUCTION: u8 = 4;
+    const PROB_SLOPE: i16 = 20;
+    const PROB_BIAS: i16 = 100;
+
+    // Razoring hyperparams
+    const RAZORING_MAX_DEPTH: u8 = 3;
+    const RAZORING_SLOPE: i16 = 50;
+    const RAZORING_BIAS: i16 = 150;
 
     pub fn new(ttsize: usize) -> Self {
         Self {
@@ -431,7 +444,7 @@ impl NegamaxTT {
     #[inline(always)]
     pub fn get_new_window(window: i16) -> i16 {
         match window {
-            25 => 100,
+            20 => 75,
             _ => POSITIVE_INFINITY,
         }
     }
@@ -719,17 +732,16 @@ impl NegamaxTT {
 
         let in_check = board.in_check();
         let has_heavy_material = !board.only_king_and_pawns();
-
+        let static_eval = board.eval();
         if has_heavy_material && !in_check {
             if depth < 7 {
-                let s_eval = board.eval();
                 let margin = Self::rfp_margin(depth);
 
-                if beta < CHECK_MATE_THRESHOLD && s_eval >= beta + margin {
-                    return s_eval;
+                if beta < CHECK_MATE_THRESHOLD && static_eval >= beta + margin {
+                    return static_eval;
                 }
             }
-            if !made_nullmove && Self::nullmove_depth_possible(depth) {
+            if !is_pv && !made_nullmove && Self::nullmove_depth_possible(depth) {
                 let reduction = 3 + depth / 3;
                 board.make_nullmove();
                 let val =
@@ -737,6 +749,40 @@ impl NegamaxTT {
                 board.unmake_nullmove();
                 if val >= beta {
                     return val;
+                }
+            }
+        }
+
+        // Prob Cut && Razoring
+        if !in_check && !is_pv {
+            if depth >= Self::PROB_MIN_DEPTH {
+                let margin = Self::PROB_BIAS + Self::PROB_SLOPE * (depth as i16);
+                let prob_cut_beta = beta + margin;
+                let prob_cut_alpha = prob_cut_beta - 1;
+
+                let shallow_eval = self.negamax_p(
+                    board,
+                    depth - Self::PROB_DEPTH_REDUCTION,
+                    prob_cut_alpha,
+                    prob_cut_beta,
+                    ply,
+                    made_nullmove,
+                );
+
+                if shallow_eval >= prob_cut_beta {
+                    return beta;
+                }
+            }
+
+            if depth <= Self::RAZORING_MAX_DEPTH {
+                let razor_margin = Self::RAZORING_BIAS + Self::RAZORING_SLOPE * (depth as i16);
+
+                if static_eval.saturating_add(razor_margin) < alpha {
+                    let q_eval = self.quiesence_search(board, alpha - 1, alpha);
+
+                    if q_eval < alpha {
+                        return q_eval;
+                    }
                 }
             }
         }
