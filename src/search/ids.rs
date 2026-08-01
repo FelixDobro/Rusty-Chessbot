@@ -38,8 +38,8 @@ impl IDSearch {
                 current_depth as u8,
                 start_time,
                 hard_duration,
-                20,
-                20,
+                25,
+                25,
                 last_val,
             ) {
                 best_res = Some(result)
