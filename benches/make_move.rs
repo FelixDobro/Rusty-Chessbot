@@ -1,5 +1,4 @@
 use chess_bot::chess::board::Board;
-use chess_bot::chess::board::bitboard::init_lazylocks;
 use chess_bot::chess::chess_move::Move;
 use criterion::{Criterion, criterion_group};
 
@@ -12,7 +11,6 @@ fn quiet_move_make_unmake(c: &mut Criterion) {
     c.bench_function("Make unmake quiet", |bencher| {
         bencher.iter_batched(
             || {
-                init_lazylocks();
                 let board = Board::default();
                 let m = Move::from_string("e2e3", &board).unwrap();
                 (board, m)
@@ -27,7 +25,6 @@ fn double_pawn_make_unmake(c: &mut Criterion) {
     c.bench_function("Make unmake Double pawn", |bencher| {
         bencher.iter_batched(
             || {
-                init_lazylocks();
                 let board = Board::default();
                 let m = Move::from_string("e2e4", &board).unwrap();
                 (board, m)
@@ -42,7 +39,6 @@ fn capture_make_unmake(c: &mut Criterion) {
     c.bench_function("Make unmake capture", |bencher| {
         bencher.iter_batched(
             || {
-                init_lazylocks();
                 let mut board = Board::default();
                 let m = Move::from_string("e2e3", &board).unwrap();
                 assert!(board.make_pl_move::<true>(m));
@@ -62,7 +58,6 @@ fn make_unmake_castle(c: &mut Criterion) {
     c.bench_function("Make unmake castle", |bencher| {
         bencher.iter_batched(
             || {
-                init_lazylocks();
                 let board = Board::from_fen(
                     "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
                 )
@@ -80,7 +75,6 @@ fn make_unmake_promo(c: &mut Criterion) {
     c.bench_function("Make unmake promo", |bencher| {
         bencher.iter_batched(
             || {
-                init_lazylocks();
                 let board = Board::from_fen("5k2/4P3/5K2/8/8/8/8/8 w - - 0 1").unwrap();
                 let promotion = Move::from_string("e7e8q", &board).unwrap();
                 (board, promotion)

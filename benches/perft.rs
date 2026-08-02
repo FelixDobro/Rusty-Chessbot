@@ -1,5 +1,4 @@
 use chess_bot::chess::board::Board;
-use chess_bot::chess::board::bitboard::init_lazylocks;
 use criterion::BatchSize;
 use criterion::{Criterion, criterion_group};
 
@@ -31,10 +30,7 @@ fn perft_criterion() -> Criterion {
 fn default_perft_depth_5(c: &mut Criterion) {
     c.bench_function("default_perft_depth_5", |b| {
         b.iter_batched(
-            || {
-                init_lazylocks();
-                Board::default()
-            },
+            || Board::default(),
             |mut board| perft(&mut board, 5),
             BatchSize::SmallInput,
         );
@@ -44,10 +40,7 @@ fn default_perft_depth_5(c: &mut Criterion) {
 fn default_perft_depth_6(c: &mut Criterion) {
     c.bench_function("default_perft_depth_6", |b| {
         b.iter_batched(
-            || {
-                init_lazylocks();
-                Board::default()
-            },
+            || Board::default(),
             |mut board| perft(&mut board, 6),
             BatchSize::SmallInput,
         );

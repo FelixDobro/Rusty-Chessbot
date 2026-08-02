@@ -3,7 +3,6 @@ use crate::chess::board::bitboard::EMPTY as EMPTY_BB;
 use crate::chess::constants::Piece::*;
 use crate::chess::constants::{BlackSide, Piece, Side, WhiteSide};
 use crate::chess::square::Square;
-use std::sync::LazyLock;
 
 pub const CHECK_MATE: i16 = i16::MIN + 100;
 // Values that cant be reached through normal evaluation / a bound for checking
@@ -130,8 +129,8 @@ const fn flip(i: usize) -> usize {
     i ^ 56
 }
 
-pub static MG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
-    let mut table = Box::new([[0i16; 64]; 12]);
+pub static MG: [[i16; 64]; 12] = {
+    let mut table = [[0i16; 64]; 12];
 
     table[Pawn.index() + BlackSide::OFFSET] = [
         0, 0, 0, 0, 0, 0, 0, 0, 98, 134, 61, 95, 68, 126, 34, -11, -6, 7, 26, 31, 65, 56, 25, -20,
@@ -170,17 +169,20 @@ pub static MG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
         -14, -14, -22, -46, -44, -30, -15, -27, 1, 7, -8, -64, -43, -16, 9, 8, -15, 36, 12, -54, 8,
         -28, 24, 14,
     ];
-
-    for piece in 0..6 {
-        for sq in 0..64 {
-            table[WhiteSide::OFFSET + piece][sq] = table[BlackSide::OFFSET + piece][flip(sq)]
+    let mut piece = 0;
+    while piece < 6 {
+        let mut sq = 0;
+        while sq < 64 {
+            table[WhiteSide::OFFSET + piece][sq] = table[BlackSide::OFFSET + piece][flip(sq)];
+            sq += 1;
         }
+        piece += 1
     }
     table
-});
+};
 
-pub static EG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
-    let mut table = Box::new([[0i16; 64]; 12]);
+pub static EG: [[i16; 64]; 12] = {
+    let mut table = [[0i16; 64]; 12];
 
     table[Pawn.index() + BlackSide::OFFSET] = [
         0, 0, 0, 0, 0, 0, 0, 0, 178, 173, 158, 134, 147, 132, 165, 187, 94, 100, 85, 67, 56, 53,
@@ -219,14 +221,18 @@ pub static EG: LazyLock<Box<[[i16; 64]; 12]>> = LazyLock::new(|| {
         21, 23, 16, 7, -9, -27, -11, 4, 13, 14, 4, -5, -17, -53, -34, -21, -11, -28, -14, -24, -43,
     ];
 
-    for piece in 0..6 {
-        for sq in 0..64 {
-            table[WhiteSide::OFFSET + piece][sq] = table[BlackSide::OFFSET + piece][flip(sq)]
+    let mut piece = 0;
+    while piece < 6 {
+        let mut sq = 0;
+        while sq < 64 {
+            table[WhiteSide::OFFSET + piece][sq] = table[BlackSide::OFFSET + piece][flip(sq)];
+            sq += 1;
         }
+        piece += 1
     }
 
     table
-});
+};
 
 pub const MG_VALUE: [i16; 12] = [82, 337, 365, 477, 1025, 0, -82, -337, -365, -477, -1025, -0];
 pub const EG_VALUE: [i16; 12] = [94, 281, 297, 512, 936, 0, -94, -281, -297, -512, -936, -0];

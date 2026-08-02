@@ -1,5 +1,4 @@
 use std::i16;
-use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use crate::chess::board::Board;
@@ -445,8 +444,8 @@ impl NegamaxTT {
             while d < MAX_SEARCH_DEPTH {
                 let mut m = 0;
                 while m < MOVE_GEN_SIZE {
-                    let d_f = (d.max(1)) as f64;
-                    let m_f = (m.max(1)) as f64;
+                    let d_f = d as f64;
+                    let m_f = m as f64;
 
                     table[d][m] = (1.0 + (d_f.ln() * m_f.ln()) / 2.25) as u8;
                     m += 1;
@@ -538,6 +537,19 @@ impl NegamaxTT {
         }
         if alpha < stand_part {
             alpha = stand_part;
+        }
+
+        if tt_move != NULL_MOVE && tt_move.is_capture() {
+            if board.make_pl_move::<true>(tt_move) {
+                let score = -self.quiesence_search(board, -beta, -alpha);
+                board.unmake_pl_move(tt_move);
+                if score >= beta {
+                    return beta;
+                }
+                if score > alpha {
+                    alpha = score;
+                }
+            }
         }
 
         let captures =
@@ -847,8 +859,23 @@ impl NegamaxTT {
                 let mut needs_full_search = true;
                 let mut value = 0;
 
-                if !is_pv && num_moves_played > 2 && is_quiet && depth_LMR && !in_check {
-                    let reduction = self.get_LMR_reduction(depth, num_moves_played);
+                // Late Move Reduction
+                if !is_pv
+                    && num_moves_played > 5
+                    && is_quiet
+                    && depth_LMR
+                    && !in_check
+                    && !board.in_check()
+                {
+                    let mut reduction = self.get_LMR_reduction(depth, num_moves_played);
+                    let history_score = self.info.history_tables.main_val(current_turn, m);
+
+                    if history_score > HistroyT::HISTORY_MAX / 2 {
+                        reduction = reduction.saturating_sub(1);
+                    } else if history_score < HistroyT::HISTORY_MIN / 2 {
+                        reduction += 1;
+                    }
+
                     let reduced_depth = depth.saturating_sub(1 + reduction);
 
                     value =

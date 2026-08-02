@@ -4,7 +4,6 @@ use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
     ShrAssign,
 };
-use std::sync::LazyLock;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Debug)]
 #[repr(transparent)]
@@ -205,21 +204,9 @@ pub const DEFAULT_COLOR_W: Bitboard = Bitboard(0x000000000000FFFF);
 pub const DEFAULT_COLOR_B: Bitboard = Bitboard(0xFFFF000000000000);
 pub const DEFAULT_OCCUPIED: Bitboard = Bitboard(0xFFFF00000000FFFF);
 
-pub fn init_lazylocks() {
-    LazyLock::force(&EN_PESSANT_UPDATES);
-    LazyLock::force(&EN_PASSANT_RM_SQUARES);
-    LazyLock::force(&KNIGHT_PATTERNS);
-    LazyLock::force(&KING_PATTERNS);
-    LazyLock::force(&DIAGONAL_LINES);
-    LazyLock::force(&DIAG_LINES_MAGIC);
-    LazyLock::force(&STRAIGHT_LINES);
-    LazyLock::force(&STRAIGHT_LINES_MAGIC);
-    LazyLock::force(&PAWN_ATTACKS);
-}
-
 // when performing a double move this table maps m.from sqaures to en_passant bitboards
-pub static EN_PESSANT_UPDATES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
-    let mut table = Box::new([EMPTY; 64]);
+pub static EN_PESSANT_UPDATES: [Bitboard; 64] = {
+    let mut table = [EMPTY; 64];
     let mut square = 0;
     while square < 64 {
         let board = 1u64 << square;
@@ -232,11 +219,11 @@ pub static EN_PESSANT_UPDATES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| 
     }
 
     table
-});
+};
 
 // maps move.to squares of an en passant moves to bitboards of captured pawns
-pub static EN_PASSANT_RM_SQUARES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
-    let mut table = Box::new([EMPTY; 64]);
+pub static EN_PASSANT_RM_SQUARES: [Bitboard; 64] = {
+    let mut table = [EMPTY; 64];
 
     let mut square = 0;
     while square < 64 {
@@ -250,10 +237,10 @@ pub static EN_PASSANT_RM_SQUARES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(
     }
 
     table
-});
+};
 
-pub static STRAIGHT_LINES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
-    let mut table = Box::new([EMPTY; 64]);
+pub static STRAIGHT_LINES: [Bitboard; 64] = {
+    let mut table = [EMPTY; 64];
     let mut sq = 0;
 
     while sq < 64 {
@@ -273,10 +260,10 @@ pub static STRAIGHT_LINES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
         sq += 1;
     }
     table
-});
+};
 
-pub static DIAGONAL_LINES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
-    let mut table = Box::new([EMPTY; 64]);
+pub static DIAGONAL_LINES: [Bitboard; 64] = {
+    let mut table = [EMPTY; 64];
     let mut sq = 0;
 
     while sq < 64 {
@@ -301,9 +288,10 @@ pub static DIAGONAL_LINES: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
     }
 
     table
-});
+};
 
 // Needed for const PDEP Intrinsic functionallity. Slow but does not matter since precomputed
+
 const fn const_pdep(index: u64, mut move_rays: u64) -> u64 {
     let mut start = 0;
     let mut result = 0;
@@ -322,8 +310,8 @@ const fn const_pdep(index: u64, mut move_rays: u64) -> u64 {
     result
 }
 
-pub static DIAG_LINES_MAGIC: LazyLock<Box<[[Bitboard; 512]; 64]>> = LazyLock::new(|| {
-    let mut table: Box<[[Bitboard; 512]; 64]> = Box::new([[EMPTY; 512]; 64]);
+pub static DIAG_LINES_MAGIC: [[Bitboard; 512]; 64] = {
+    let mut table: [[Bitboard; 512]; 64] = [[EMPTY; 512]; 64];
 
     let mut sq = 0;
 
@@ -388,15 +376,11 @@ pub static DIAG_LINES_MAGIC: LazyLock<Box<[[Bitboard; 512]; 64]>> = LazyLock::ne
     }
 
     table
-});
+};
 
-pub static STRAIGHT_LINES_MAGIC: LazyLock<Box<[[Bitboard; 4096]; 64]>> = LazyLock::new(|| {
-    let mut table: Vec<[Bitboard; 4096]> = Vec::with_capacity(64);
-
-    // 2. Befülle ihn mit 64 Zeilen aus jeweils 4096 leeren Bitboards
-    for _ in 0..64 {
-        table.push([EMPTY; 4096]);
-    }
+#[allow(long_running_const_eval)]
+pub static STRAIGHT_LINES_MAGIC: [[Bitboard; 4096]; 64] = {
+    let mut table = [[EMPTY; 4096]; 64];
 
     let mut sq: u32 = 0;
 
@@ -457,11 +441,11 @@ pub static STRAIGHT_LINES_MAGIC: LazyLock<Box<[[Bitboard; 4096]; 64]>> = LazyLoc
         sq += 1;
     }
 
-    table.into_boxed_slice().try_into().unwrap()
-});
+    table
+};
 
-pub static PAWN_ATTACKS: LazyLock<Box<[[Bitboard; 64]; 2]>> = LazyLock::new(|| {
-    let mut map: Box<[[Bitboard; 64]; 2]> = Box::new([[EMPTY; 64]; 2]);
+pub static PAWN_ATTACKS: [[Bitboard; 64]; 2] = {
+    let mut map: [[Bitboard; 64]; 2] = [[EMPTY; 64]; 2];
     let mut sq: u8 = 0;
     while sq < 64 {
         let board = 1u64 << sq;
@@ -476,17 +460,17 @@ pub static PAWN_ATTACKS: LazyLock<Box<[[Bitboard; 64]; 2]>> = LazyLock::new(|| {
         sq += 1;
     }
     map
-});
+};
 
-pub static KING_PATTERNS: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
-    let mut map: Box<[Bitboard; 64]> = Box::new([EMPTY; 64]);
+pub static KING_PATTERNS: [Bitboard; 64] = {
+    let mut map: [Bitboard; 64] = [EMPTY; 64];
     let mut square = 0;
     while square < 64 {
         map[square as usize] = pre_calculate_king_moves(square);
         square += 1;
     }
     map
-});
+};
 
 const fn pre_calculate_king_moves(sq: u8) -> Bitboard {
     let board = 1u64 << sq;
@@ -499,15 +483,15 @@ const fn pre_calculate_king_moves(sq: u8) -> Bitboard {
     Bitboard::from_u64(first_half | (board >> 8) | (board << 8))
 }
 
-pub static KNIGHT_PATTERNS: LazyLock<Box<[Bitboard; 64]>> = LazyLock::new(|| {
-    let mut table = Box::new([EMPTY; 64]);
+pub static KNIGHT_PATTERNS: [Bitboard; 64] = {
+    let mut table = [EMPTY; 64];
     let mut square = 0;
     while square < 64 {
         table[square as usize] = pre_calculate_knight_moves(square);
         square += 1;
     }
     table
-});
+};
 
 const fn pre_calculate_knight_moves(sq: u8) -> Bitboard {
     let board = 1u64 << sq;

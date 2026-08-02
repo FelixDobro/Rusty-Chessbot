@@ -135,7 +135,7 @@ pub enum Piece {
 
 impl Piece {
     #[inline]
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self as usize
     }
 
