@@ -413,18 +413,52 @@ impl SearchInfo {
 pub struct NegamaxTT {
     ttable: TTable,
     info: SearchInfo,
+    LMR: Box<[[u8; MOVE_GEN_SIZE]; MAX_SEARCH_DEPTH]>,
 }
 
 impl NegamaxTT {
-    const CHECK_TIME_NODES: u64 = 100_000;
+    const CHECK_TIME_NODES: u64 = 200_000;
+
+    // Reverse Futility Pruning hyperparams
     const RFP_BASE: i16 = 60;
     const RFP_LIN: i16 = 30;
     const RFP_QUAD: i16 = 10;
 
+    // Prob Cut hyperparams
+    const PROB_MIN_DEPTH: u8 = 5;
+    const PROB_DEPTH_REDUCTION: u8 = 4;
+    const PROB_SLOPE: i16 = 25;
+    const PROB_BIAS: i16 = 120;
+
+    // Razoring hyperparams
+    const RAZORING_MAX_DEPTH: u8 = 3;
+    const RAZORING_SLOPE: i16 = 100;
+    const RAZORING_BIAS: i16 = 300;
+
+    const LMR_MIN_DEPTH: u8 = 3;
+
     pub fn new(ttsize: usize) -> Self {
+        let reductions: Box<[[u8; MOVE_GEN_SIZE]; MAX_SEARCH_DEPTH]> = Box::new({
+            let mut table = [[0u8; MOVE_GEN_SIZE]; MAX_SEARCH_DEPTH];
+            let mut d = 0;
+            while d < MAX_SEARCH_DEPTH {
+                let mut m = 0;
+                while m < MOVE_GEN_SIZE {
+                    let d_f = d as f64;
+                    let m_f = m as f64;
+
+                    table[d][m] = (1.0 + (d_f.ln() * m_f.ln()) / 2.25) as u8;
+                    m += 1;
+                }
+                d += 1;
+            }
+            table
+        });
+
         Self {
             ttable: TTable::new(ttsize),
             info: SearchInfo::new(),
+            LMR: reductions,
         }
     }
 
@@ -434,6 +468,11 @@ impl NegamaxTT {
             25 => 100,
             _ => POSITIVE_INFINITY,
         }
+    }
+
+    #[inline(always)]
+    pub fn get_LMR_reduction(&self, depth: u8, move_count: usize) -> u8 {
+        self.LMR[depth as usize][move_count]
     }
 
     #[inline(always)]
@@ -498,6 +537,19 @@ impl NegamaxTT {
         }
         if alpha < stand_part {
             alpha = stand_part;
+        }
+
+        if tt_move != NULL_MOVE && tt_move.is_capture() {
+            if board.make_pl_move::<true>(tt_move) {
+                let score = -self.quiesence_search(board, -beta, -alpha);
+                board.unmake_pl_move(tt_move);
+                if score >= beta {
+                    return beta;
+                }
+                if score > alpha {
+                    alpha = score;
+                }
+            }
         }
 
         let captures =
@@ -719,17 +771,16 @@ impl NegamaxTT {
 
         let in_check = board.in_check();
         let has_heavy_material = !board.only_king_and_pawns();
-
+        let static_eval = board.eval();
         if has_heavy_material && !in_check {
             if depth < 7 {
-                let s_eval = board.eval();
                 let margin = Self::rfp_margin(depth);
 
-                if beta < CHECK_MATE_THRESHOLD && s_eval >= beta + margin {
-                    return s_eval;
+                if beta < CHECK_MATE_THRESHOLD && static_eval >= beta + margin {
+                    return static_eval;
                 }
             }
-            if !made_nullmove && Self::nullmove_depth_possible(depth) {
+            if !is_pv && !made_nullmove && Self::nullmove_depth_possible(depth) {
                 let reduction = 3 + depth / 3;
                 board.make_nullmove();
                 let val =
@@ -737,6 +788,41 @@ impl NegamaxTT {
                 board.unmake_nullmove();
                 if val >= beta {
                     return val;
+                }
+            }
+        }
+
+        // Prob Cut && Razoring
+        if !in_check && !is_pv {
+            if depth >= Self::PROB_MIN_DEPTH {
+                let margin =
+                    Self::PROB_BIAS.saturating_add(Self::PROB_SLOPE.saturating_mul(depth as i16));
+                let prob_cut_beta = beta.saturating_add(margin);
+                let prob_cut_alpha = prob_cut_beta - 1;
+
+                let shallow_eval = self.negamax_p(
+                    board,
+                    depth - Self::PROB_DEPTH_REDUCTION,
+                    prob_cut_alpha,
+                    prob_cut_beta,
+                    ply,
+                    made_nullmove,
+                );
+
+                if shallow_eval >= prob_cut_beta {
+                    return beta;
+                }
+            }
+
+            if depth <= Self::RAZORING_MAX_DEPTH {
+                let razor_margin = Self::RAZORING_BIAS + Self::RAZORING_SLOPE * (depth as i16);
+
+                if static_eval.saturating_add(razor_margin) < alpha {
+                    let q_eval = self.quiesence_search(board, alpha - 1, alpha);
+
+                    if q_eval < alpha {
+                        return q_eval;
+                    }
                 }
             }
         }
@@ -749,6 +835,7 @@ impl NegamaxTT {
         let mut first_move = true;
         let mut quiets_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
         let mut captures_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
+        let depth_LMR = depth >= Self::LMR_MIN_DEPTH;
 
         while let Some(m) = sorter.next(board, &self.info.history_tables, &self.info.search_stack) {
             debug_assert_ne!(m, NULL_MOVE);
@@ -757,23 +844,59 @@ impl NegamaxTT {
             let stack_item = StackItem::new(m, moved_piece);
 
             if board.make_pl_move::<true>(m) {
+                let is_quiet = m.is_quiet();
+
                 self.info.push(stack_item);
-                if m.is_quiet() {
+                if is_quiet {
                     quiets_played.push(m);
                 }
                 if m.is_capture() {
                     captures_played.push(m);
                 }
-                num_moves_played += 1;
-                let mut value;
-                if first_move {
-                    value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply + 1, false);
-                    first_move = false;
-                } else {
-                    value = -self.negamax_p(board, depth - 1, -alpha - 1, -alpha, ply + 1, false);
 
-                    if value > alpha && value < beta {
-                        value = -self.negamax_p(board, depth - 1, -beta, -value, ply + 1, false);
+                num_moves_played += 1;
+
+                let mut needs_full_search = true;
+                let mut value = 0;
+
+                // Late Move Reduction
+                if !is_pv
+                    && num_moves_played > 5
+                    && is_quiet
+                    && depth_LMR
+                    && !in_check
+                    && !board.in_check()
+                {
+                    let mut reduction = self.get_LMR_reduction(depth, num_moves_played);
+                    let history_score = self.info.history_tables.main_val(current_turn, m);
+
+                    if history_score > HistroyT::HISTORY_MAX / 2 {
+                        reduction = reduction.saturating_sub(1);
+                    } else if history_score < HistroyT::HISTORY_MIN / 2 {
+                        reduction += 1;
+                    }
+
+                    let reduced_depth = depth.saturating_sub(1 + reduction);
+
+                    value =
+                        -self.negamax_p(board, reduced_depth, -alpha - 1, -alpha, ply + 1, false);
+
+                    if value <= alpha {
+                        needs_full_search = false
+                    }
+                }
+                if needs_full_search {
+                    if first_move {
+                        value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply + 1, false);
+                        first_move = false;
+                    } else {
+                        value =
+                            -self.negamax_p(board, depth - 1, -alpha - 1, -alpha, ply + 1, false);
+
+                        if value > alpha && value < beta {
+                            value =
+                                -self.negamax_p(board, depth - 1, -beta, -value, ply + 1, false);
+                        }
                     }
                 }
 
