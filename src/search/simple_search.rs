@@ -185,7 +185,8 @@ impl HistroyT {
     }
 
     pub fn reward_capture(&mut self, board: &Board, m: Move, depth: u8) {
-        let bonus = (depth * depth) as i32;
+        let depth_i32 = depth as i32;
+        let bonus = depth_i32 * depth_i32;
         let clamped_bonus = Self::HISTORY_MIN.max(bonus).min(Self::HISTORY_MAX);
         let moved_piece = board.get_piece_w_color(m.from());
         let captured_piece = board.get_captured(m);
@@ -199,7 +200,8 @@ impl HistroyT {
         m: Move,
         piece: usize,
     ) {
-        let bonus = (depth * depth) as i32;
+        let depth_i32 = depth as i32;
+        let bonus = depth_i32 * depth_i32;
         let clamped_bonus = Self::HISTORY_MIN.max(bonus).min(Self::HISTORY_MAX);
         search_stack
             .as_slice::<{ Self::NUM_PLY_CONTINUATION }>()
@@ -225,7 +227,8 @@ impl HistroyT {
         depth: u8,
         board: &Board,
     ) {
-        let malus = (depth * depth) as i32 * -1;
+        let depth_i32 = depth as i32;
+        let malus = (depth_i32 * depth_i32) * -1;
         let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
 
         search_stack
@@ -253,7 +256,8 @@ impl HistroyT {
         board: &Board,
         depth: u8,
     ) {
-        let malus = (depth * depth) as i32 * -1;
+        let depth_i32 = depth as i32;
+        let malus = (depth_i32 * depth_i32) * -1;
         let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
 
         captures.as_slice().iter().for_each(|&m| {
@@ -265,7 +269,9 @@ impl HistroyT {
     }
 
     pub fn punish_main(&mut self, quiets: &MoveList<MOVE_GEN_SIZE>, depth: u8, turn: Color) {
-        let malus = (depth * depth) as i32 * -1;
+        let depth_i32 = depth as i32;
+        let malus = (depth_i32 * depth_i32) * -1;
+
         let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
         for m in quiets.as_slice() {
             self.main_history_update(*m, clamped_bonus, turn.index());
@@ -372,7 +378,8 @@ impl SearchInfo {
 
     #[inline(always)]
     pub fn reward_main(&mut self, m: Move, depth: u8, turn: Color) {
-        let bonus = (depth * depth) as i32;
+        let depth_i32 = depth as i32;
+        let bonus = depth_i32 * depth_i32;
         let clamped_bonus = HistroyT::HISTORY_MIN.max(bonus).min(HistroyT::HISTORY_MAX);
         self.history_tables
             .main_history_update(m, clamped_bonus, turn.index());
@@ -612,15 +619,41 @@ impl NegamaxTT {
                     captures_played.push(m);
                 }
 
+                let gives_check = board.in_check();
                 let mut value;
+
                 if first_move {
-                    value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply + 1, false);
+                    value = -self.negamax_p(
+                        board,
+                        depth - 1,
+                        -beta,
+                        -alpha,
+                        ply + 1,
+                        false,
+                        gives_check,
+                    );
                     first_move = false;
                 } else {
-                    value = -self.negamax_p(board, depth - 1, -alpha - 1, -alpha, ply + 1, false);
+                    value = -self.negamax_p(
+                        board,
+                        depth - 1,
+                        -alpha - 1,
+                        -alpha,
+                        ply + 1,
+                        false,
+                        gives_check,
+                    );
 
                     if value > alpha && value < beta {
-                        value = -self.negamax_p(board, depth - 1, -beta, -value, ply + 1, false);
+                        value = -self.negamax_p(
+                            board,
+                            depth - 1,
+                            -beta,
+                            -value,
+                            ply + 1,
+                            false,
+                            gives_check,
+                        );
                     }
                 }
 
@@ -741,6 +774,7 @@ impl NegamaxTT {
         beta: i16,
         ply: usize,
         made_nullmove: bool,
+        in_check: bool,
     ) -> i16 {
         if self.info.timed_nodes > Self::CHECK_TIME_NODES {
             if self.info.start_time.elapsed() > self.info.allowed_duration {
@@ -769,7 +803,6 @@ impl NegamaxTT {
             return self.quiesence_search(board, alpha, beta);
         }
 
-        let in_check = board.in_check();
         let has_heavy_material = !board.only_king_and_pawns();
         let static_eval = board.eval();
         if has_heavy_material && !in_check {
@@ -783,8 +816,15 @@ impl NegamaxTT {
             if !is_pv && !made_nullmove && Self::nullmove_depth_possible(depth) {
                 let reduction = 3 + depth / 3;
                 board.make_nullmove();
-                let val =
-                    -self.negamax_p(board, depth - reduction, -beta, -beta + 1, ply + 1, true);
+                let val = -self.negamax_p(
+                    board,
+                    depth - reduction,
+                    -beta,
+                    -beta + 1,
+                    ply + 1,
+                    true,
+                    false,
+                );
                 board.unmake_nullmove();
                 if val >= beta {
                     return val;
@@ -807,6 +847,7 @@ impl NegamaxTT {
                     prob_cut_beta,
                     ply,
                     made_nullmove,
+                    false,
                 );
 
                 if shallow_eval >= prob_cut_beta {
@@ -845,6 +886,7 @@ impl NegamaxTT {
 
             if board.make_pl_move::<true>(m) {
                 let is_quiet = m.is_quiet();
+                let gives_check = board.in_check();
 
                 self.info.push(stack_item);
                 if is_quiet {
@@ -856,30 +898,40 @@ impl NegamaxTT {
 
                 num_moves_played += 1;
 
+                let extension = if gives_check && ply < 40 { 1 } else { 0 };
+
+                let new_depth = depth - 1 + extension;
+
                 let mut needs_full_search = true;
                 let mut value = 0;
-
                 // Late Move Reduction
                 if !is_pv
-                    && num_moves_played > 5
+                    && num_moves_played > 2
                     && is_quiet
                     && depth_LMR
                     && !in_check
-                    && !board.in_check()
+                    && !gives_check
                 {
                     let mut reduction = self.get_LMR_reduction(depth, num_moves_played);
                     let history_score = self.info.history_tables.main_val(current_turn, m);
 
-                    if history_score > HistroyT::HISTORY_MAX / 2 {
+                    if history_score > HistroyT::HISTORY_MAX / 5 {
                         reduction = reduction.saturating_sub(1);
-                    } else if history_score < HistroyT::HISTORY_MIN / 2 {
+                    } else if history_score < HistroyT::HISTORY_MIN / 5 {
                         reduction += 1;
                     }
 
                     let reduced_depth = depth.saturating_sub(1 + reduction);
 
-                    value =
-                        -self.negamax_p(board, reduced_depth, -alpha - 1, -alpha, ply + 1, false);
+                    value = -self.negamax_p(
+                        board,
+                        reduced_depth,
+                        -alpha - 1,
+                        -alpha,
+                        ply + 1,
+                        false,
+                        false,
+                    );
 
                     if value <= alpha {
                         needs_full_search = false
@@ -887,15 +939,37 @@ impl NegamaxTT {
                 }
                 if needs_full_search {
                     if first_move {
-                        value = -self.negamax_p(board, depth - 1, -beta, -alpha, ply + 1, false);
+                        value = -self.negamax_p(
+                            board,
+                            new_depth,
+                            -beta,
+                            -alpha,
+                            ply + 1,
+                            false,
+                            gives_check,
+                        );
                         first_move = false;
                     } else {
-                        value =
-                            -self.negamax_p(board, depth - 1, -alpha - 1, -alpha, ply + 1, false);
+                        value = -self.negamax_p(
+                            board,
+                            new_depth,
+                            -alpha - 1,
+                            -alpha,
+                            ply + 1,
+                            false,
+                            gives_check,
+                        );
 
                         if value > alpha && value < beta {
-                            value =
-                                -self.negamax_p(board, depth - 1, -beta, -value, ply + 1, false);
+                            value = -self.negamax_p(
+                                board,
+                                new_depth,
+                                -beta,
+                                -value,
+                                ply + 1,
+                                false,
+                                gives_check,
+                            );
                         }
                     }
                 }
