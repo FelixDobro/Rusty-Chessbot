@@ -689,6 +689,20 @@ impl Board {
         Pawn.index()
     }
 
+    #[inline(always)]
+    pub fn get_last_captured(&self) -> usize {
+        let last_state = self.undo_stack.peek();
+        if last_state.en_passant_square != EMPTY_BB {
+            return Pawn.index();
+        }
+        debug_assert_ne!(
+            last_state.captured_piece, Empty,
+            "Move did not caputre any piece"
+        );
+
+        last_state.captured_piece.index()
+    }
+
     pub fn count_material(&self) -> i16 {
         let mut result = 0i16;
         result += self.piece_bb[Pawn.index()].count_ones() as i16;

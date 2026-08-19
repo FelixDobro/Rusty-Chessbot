@@ -442,6 +442,8 @@ impl NegamaxTT {
     const RAZORING_SLOPE: i16 = 100;
     const RAZORING_BIAS: i16 = 300;
 
+    const CAPTURE_HISTORY_EXTENSION_THRESHOLD: i32 = HistroyT::HISTORY_MAX / 2;
+
     const LMR_MIN_DEPTH: u8 = 3;
 
     pub fn new(ttsize: usize) -> Self {
@@ -887,23 +889,53 @@ impl NegamaxTT {
             if board.make_pl_move::<true>(m) {
                 let is_quiet = m.is_quiet();
                 let gives_check = board.in_check();
+                let is_capture = m.is_capture();
 
                 self.info.push(stack_item);
                 if is_quiet {
                     quiets_played.push(m);
                 }
-                if m.is_capture() {
+                if is_capture {
                     captures_played.push(m);
                 }
 
                 num_moves_played += 1;
 
-                let extension = if gives_check && ply < 40 { 1 } else { 0 };
+                if !in_check
+                    && !gives_check
+                    && !is_pv
+                    && is_quiet
+                    && depth < 5
+                    && alpha < CHECK_MATE_THRESHOLD
+                {
+                    let margin = 100 + 150 * (depth as i16);
+                    if static_eval + margin < alpha {
+                        board.unmake_pl_move(m);
+                        self.info.pop();
+                        quiets_played.pop();
+                        continue;
+                    }
+                }
+
+                // Check Extension
+                let mut extension: u8 = if gives_check && ply < 40 { 1 } else { 0 };
+
+                // Capture Extension
+                // if is_pv
+                //     && is_capture
+                //     && self.info.history_tables.capture_val(
+                //         moved_piece,
+                //         m,
+                //         board.get_last_captured(),
+                //     ) > Self::CAPTURE_HISTORY_EXTENSION_THRESHOLD
+                // {
+                //     extension = extension.wrapping_add(1);
+                // }
 
                 let new_depth = depth - 1 + extension;
-
                 let mut needs_full_search = true;
                 let mut value = 0;
+
                 // Late Move Reduction
                 if !is_pv
                     && num_moves_played > 2
@@ -937,6 +969,7 @@ impl NegamaxTT {
                         needs_full_search = false
                     }
                 }
+
                 if needs_full_search {
                     if first_move {
                         value = -self.negamax_p(
