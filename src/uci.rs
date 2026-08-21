@@ -1,4 +1,4 @@
-use crate::search::SearchLimits;
+use crate::search::{SearchLimits, simple_search::NegamaxTT};
 
 use crate::chess::board::Board;
 use crate::chess::chess_move::Move;
@@ -48,8 +48,9 @@ impl UCIManager {
                         println!("uciok");
                     }
 
-                    "ucinewboard" => {
+                    "ucinewgame" => {
                         self.board = Board::default();
+                        self.search.reset();
                     }
 
                     "isready" => {

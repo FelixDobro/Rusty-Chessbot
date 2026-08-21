@@ -176,6 +176,10 @@ impl TTable {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.table = vec![Bucket::empty(); self.size].into_boxed_slice();
+    }
+
     pub fn insert(&mut self, entry: TTableEntry) {
         let index = entry.hash as usize % self.size;
         self.table[index].insert(entry);

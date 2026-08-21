@@ -333,8 +333,11 @@ impl SearchInfo {
         }
     }
 
+    pub fn clear_tables(&mut self) {
+        self.history_tables = HistroyT::new();
+    }
+
     pub fn reset(&mut self, start_time: Instant, allowed_duration: Duration) {
-        self.age = 0;
         self.nodes_searched = 0;
         self.timed_nodes = 0;
         self.time_fail = false;
@@ -469,6 +472,15 @@ impl NegamaxTT {
             info: SearchInfo::new(),
             LMR: reductions,
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.ttable.clear();
+        self.info.clear_tables();
+    }
+
+    pub fn new_search_turn(&mut self) {
+        self.info.increase_age();
     }
 
     #[inline(always)]
@@ -747,8 +759,6 @@ impl NegamaxTT {
             ntype: ntype,
             age: self.info.age,
         });
-
-        self.info.increase_age();
 
         if best_move != NULL_MOVE {
             return Some(SearchResult {

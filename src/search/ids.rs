@@ -13,6 +13,10 @@ impl IDSearch {
         Self { search_algo: algo }
     }
 
+    pub fn reset(&mut self) {
+        self.search_algo.clear();
+    }
+
     pub fn timed_search(&mut self, board: &mut Board, base: u64, inc: u64) -> Option<SearchResult> {
         let start_time = Instant::now();
 
@@ -63,6 +67,8 @@ impl IDSearch {
     }
 
     pub fn search(&mut self, board: &mut Board, limits: &SearchLimits) -> Option<SearchResult> {
+        self.search_algo.new_search_turn();
+
         if let Some(depth) = limits.max_depth {
             return self.depth_search(board, depth);
         } else if let Some((base, inc)) = limits.base_inc {
