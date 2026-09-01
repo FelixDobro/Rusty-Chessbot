@@ -5,7 +5,8 @@ use crate::chess::chess_move::Move;
 use crate::chess::chess_move::NULL_MOVE;
 
 pub const MAX_SEARCH_DEPTH: usize = 64;
-pub const GLOBAL_MAX_SEARCH_DURATION_H: u64 = 100000000u64;
+pub const GLOBAL_MAX_SEARCH_DURATION: u64 = 100000000u64;
+pub const GLOBAL_MAX_SEARCH_NODES: u64 = 100_000_000_000u64;
 
 #[cfg(test)]
 use crate::search::Ntype::Exact;
@@ -26,6 +27,12 @@ impl SearchLimits {
             ..Default::default()
         }
     }
+    pub fn nodes(nodes: u64) -> Self {
+        Self {
+            max_nodes: Some(nodes),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -39,11 +46,11 @@ pub struct SearchResult {
 impl SearchResult {
     pub fn print_info(&self) {
         println!(
-            "{}, eval: {}, depth: {}, nodes: {} Mio",
-            self.best_move,
-            self.evaluation,
+            "info depth {} score cp {} nodes {} pv {}",
             self.depth,
-            (self.nodes_searched as f32) / 1000000f32
+            self.evaluation,
+            self.nodes_searched,
+            self.best_move.to_string(),
         );
     }
 }
@@ -168,11 +175,24 @@ pub struct TTable {
 }
 
 impl TTable {
+    pub fn prev_power_two(val: usize) -> usize {
+        if val == 0 {
+            return 0;
+        }
+        1 << 64 - 1 - val.leading_zeros() as usize
+    }
+
+    pub fn num_buckets(mb: usize) -> usize {
+        const BUCKET_SIZE: usize = 64;
+        let bytes = mb * 1024 * 1024;
+        Self::prev_power_two(bytes / BUCKET_SIZE)
+    }
+
     pub fn new(size: usize) -> Self {
-        let two_power_size = size.next_power_of_two();
+        let num_buckets = Self::num_buckets(size);
         TTable {
-            table: vec![Bucket::empty(); two_power_size].into_boxed_slice(),
-            size: two_power_size,
+            table: vec![Bucket::empty(); num_buckets].into_boxed_slice(),
+            size: num_buckets,
         }
     }
 
@@ -235,5 +255,18 @@ mod test {
         table.insert(TTableEntry::debug_entry(board.get_hash(), 21, 7));
 
         table.get_bucket(bucket_hash).debug_print();
+    }
+
+    #[test]
+    fn prev_power() {
+        assert_eq!(TTable::prev_power_two(1), 1);
+        assert_eq!(TTable::prev_power_two(2), 2);
+        assert_eq!(TTable::prev_power_two(3), 2);
+        assert_eq!(TTable::prev_power_two(5), 4);
+        assert_eq!(TTable::prev_power_two(6), 4);
+        assert_eq!(TTable::prev_power_two(8), 8);
+        assert_eq!(TTable::prev_power_two(12), 8);
+        assert_eq!(TTable::prev_power_two(16), 16);
+        assert_eq!(TTable::prev_power_two(25), 16);
     }
 }

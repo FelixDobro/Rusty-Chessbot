@@ -1,3 +1,10 @@
 /target
 
+.vscode/
+
+logs/
+results/
+engines/
 *.ipynb
+*.epd
+*.bin

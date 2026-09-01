@@ -1,6 +1,7 @@
 #[allow(dead_code)]
 mod chess;
 mod move_sorting;
+mod parameters;
 mod search;
 mod uci;
 
@@ -10,7 +11,7 @@ use crate::uci::UCIManager;
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let negamax = NegamaxTT::new(2u64.pow(25) as usize);
+    let negamax = NegamaxTT::new(100 as usize);
     let search = IDSearch::new(negamax);
     let mut mangager = UCIManager::new(search);
     mangager.start_protocol()?;
