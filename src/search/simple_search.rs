@@ -4,7 +4,7 @@ use std::time::Instant;
 use crate::chess::board::Board;
 use crate::chess::board::evaluation::{CHECK_MATE_THRESHOLD, NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::{MOVE_GEN_SIZE, Move, MoveList, NULL_MOVE};
-use crate::chess::constants::{Color, NUM_PIECES};
+use crate::chess::constants::{Color, NUM_PIECES, Piece};
 use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
 use crate::parameters::*;
 use crate::search::Ntype::Exact;
@@ -186,11 +186,13 @@ impl HistroyT {
 
     pub fn reward_capture(&mut self, board: &Board, m: Move, depth: u8) {
         let depth_i32 = depth as i32;
-        let bonus = depth_i32 * depth_i32;
+        let bonus = CAPTURE_REWARD_QUADRATIC()
+            .saturating_mul(depth_i32 * depth_i32)
+            .saturating_add(CAPTURE_REWARD_LINEAR().saturating_mul(depth_i32));
         let clamped_bonus = Self::HISTORY_MIN.max(bonus).min(Self::HISTORY_MAX);
         let moved_piece = board.get_piece_w_color(m.from());
         let captured_piece = board.get_captured(m);
-        self.capture_history_update(moved_piece, captured_piece, m, clamped_bonus);
+        self.capture_history_update(moved_piece, captured_piece.index(), m, clamped_bonus);
     }
 
     pub fn reward_continuation(
@@ -201,7 +203,9 @@ impl HistroyT {
         piece: usize,
     ) {
         let depth_i32 = depth as i32;
-        let bonus = depth_i32 * depth_i32;
+        let bonus = CONTINUATION_REWARD_QUADRATIC()
+            .saturating_mul(depth_i32 * depth_i32)
+            .saturating_add(CONTINUATION_REWARD_LINEAR().saturating_mul(depth_i32));
         let clamped_bonus = Self::HISTORY_MIN.max(bonus).min(Self::HISTORY_MAX);
         search_stack
             .as_slice::<{ Self::NUM_PLY_CONTINUATION }>()
@@ -228,7 +232,10 @@ impl HistroyT {
         board: &Board,
     ) {
         let depth_i32 = depth as i32;
-        let malus = (depth_i32 * depth_i32) * -1;
+        let malus = CONTINUATION_PUNISH_QUADRATIC()
+            .saturating_mul(depth_i32 * depth_i32)
+            .saturating_add(depth_i32.saturating_mul(CONTINUATION_PUNISH_LINEAR()))
+            * -1;
         let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
 
         search_stack
@@ -257,20 +264,26 @@ impl HistroyT {
         depth: u8,
     ) {
         let depth_i32 = depth as i32;
-        let malus = (depth_i32 * depth_i32) * -1;
+        let malus = CAPTURE_PUNISH_QUADRATIC()
+            .saturating_mul(depth_i32 * depth_i32)
+            .saturating_add(depth_i32.saturating_mul(CAPTURE_PUNISH_LINEAR()))
+            * -1;
         let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
 
         captures.as_slice().iter().for_each(|&m| {
             debug_assert!(m.is_capture(), "Move should be capture");
             let moved_piece = board.get_piece_w_color(m.from());
             let captured_piece = board.get_captured(m);
-            self.capture_history_update(moved_piece, captured_piece, m, clamped_bonus);
+            self.capture_history_update(moved_piece, captured_piece.index(), m, clamped_bonus);
         });
     }
 
     pub fn punish_main(&mut self, quiets: &MoveList<MOVE_GEN_SIZE>, depth: u8, turn: Color) {
         let depth_i32 = depth as i32;
-        let malus = (depth_i32 * depth_i32) * -1;
+        let malus = MAIN_PUNISH_QUADRATIC()
+            .saturating_mul(depth_i32 * depth_i32)
+            .saturating_add(depth_i32.saturating_mul(MAIN_PUNISH_LINEAR()))
+            * -1;
 
         let clamped_bonus = Self::HISTORY_MIN.max(malus).min(Self::HISTORY_MAX);
         for m in quiets.as_slice() {
@@ -336,8 +349,8 @@ impl SearchInfo {
     }
 
     pub fn reset(&mut self, restricitons: Restrictions) {
-        self.nodes_searched = 0;
-        self.timed_nodes = 0;
+        self.nodes_searched = 1;
+        self.timed_nodes = 1;
         self.abort = false;
         self.restricitons = restricitons;
         self.search_stack = SearchStack::new();
@@ -363,6 +376,12 @@ impl SearchInfo {
     }
 
     #[inline(always)]
+    pub fn decrement_nodes(&mut self) {
+        self.timed_nodes = self.timed_nodes.saturating_sub(1);
+        self.nodes_searched = self.nodes_searched.saturating_sub(1);
+    }
+
+    #[inline(always)]
     pub fn increase_age(&mut self) {
         self.age = self.age.wrapping_add(1);
     }
@@ -385,7 +404,9 @@ impl SearchInfo {
     #[inline(always)]
     pub fn reward_main(&mut self, m: Move, depth: u8, turn: Color) {
         let depth_i32 = depth as i32;
-        let bonus = depth_i32 * depth_i32;
+        let bonus = MAIN_REWARD_QUADRATIC()
+            .saturating_mul(depth_i32 * depth_i32)
+            .saturating_add(MAIN_REWARD_LINEAR().saturating_mul(depth_i32));
         let clamped_bonus = HistroyT::HISTORY_MIN.max(bonus).min(HistroyT::HISTORY_MAX);
         self.history_tables
             .main_history_update(m, clamped_bonus, turn.index());
@@ -554,13 +575,19 @@ impl NegamaxTT {
         margin
     }
 
-    pub fn quiesence_search<const limits: u8>(
+    #[inline(always)]
+    fn delta_cutoff(stand_pat: i16, alpha: i16, m: Move, board: &Board) -> bool {
+        let p_val = board.piece_eval(board.get_captured(m));
+        !m.is_promo() && stand_pat + p_val + DELTA_MARGIN() < alpha
+    }
+
+    pub fn quiesence_search<const LIMITS: u8>(
         &mut self,
         board: &mut Board,
         mut alpha: i16,
         beta: i16,
     ) -> i16 {
-        if limits == Restrictions::TIME && self.info.timed_nodes > Self::CHECK_TIME_NODES {
+        if LIMITS == Restrictions::TIME && self.info.timed_nodes > Self::CHECK_TIME_NODES {
             if Instant::now() > self.info.restricitons.end {
                 self.info.abort();
                 return 0;
@@ -568,7 +595,7 @@ impl NegamaxTT {
             self.info.reset_timed_nodes();
         }
 
-        if limits == Restrictions::NODES
+        if LIMITS == Restrictions::NODES
             && self.info.nodes_searched >= self.info.restricitons.max_nodes
         {
             self.info.abort();
@@ -588,33 +615,33 @@ impl NegamaxTT {
             tt_move = entry.best_move;
         }
 
-        let stand_part = board.eval();
+        let stand_pat = board.eval();
+        let mut big_margin = board.piece_eval(Piece::Queen);
+        if board.can_promo() {
+            big_margin += 775
+        }
 
-        if stand_part >= beta {
+        if stand_pat.saturating_add(big_margin) < alpha {
+            return alpha;
+        }
+        if stand_pat >= beta {
             return beta;
         }
-        if alpha < stand_part {
-            alpha = stand_part;
+        if alpha < stand_pat {
+            alpha = stand_pat;
         }
 
-        if tt_move != NULL_MOVE && tt_move.is_capture() {
-            if board.make_pl_move::<true>(tt_move) {
-                let score = -self.quiesence_search::<limits>(board, -beta, -alpha);
-                board.unmake_pl_move(tt_move);
-                if score >= beta {
-                    return beta;
-                }
-                if score > alpha {
-                    alpha = score;
-                }
-            }
-        }
-
-        let captures =
+        let mut captures =
             AdvancedSorting::sort_only_captures(board, tt_move, &self.info.history_tables);
-        for &m in captures.as_slice() {
+        while let Some((m, m_eval)) = captures.selection_sort_next() {
+            if m_eval.is_negative() {
+                break;
+            }
+            if Self::delta_cutoff(stand_pat, alpha, m, board) {
+                continue;
+            }
             if board.make_pl_move::<true>(m) {
-                let score = -self.quiesence_search::<limits>(board, -beta, -alpha);
+                let score = -self.quiesence_search::<LIMITS>(board, -beta, -alpha);
                 board.unmake_pl_move(m);
                 if score >= beta {
                     return beta;
@@ -631,7 +658,7 @@ impl NegamaxTT {
         alpha
     }
 
-    pub fn negamax<const limits: u8>(
+    pub fn negamax<const LIMITS: u8>(
         &mut self,
         board: &mut Board,
         depth: u8,
@@ -676,7 +703,7 @@ impl NegamaxTT {
                 let mut value;
 
                 if first_move {
-                    value = -self.negamax_p::<{ limits }>(
+                    value = -self.negamax_p::<{ LIMITS }>(
                         board,
                         depth - 1,
                         -beta,
@@ -687,7 +714,7 @@ impl NegamaxTT {
                     );
                     first_move = false;
                 } else {
-                    value = -self.negamax_p::<{ limits }>(
+                    value = -self.negamax_p::<{ LIMITS }>(
                         board,
                         depth - 1,
                         -alpha - 1,
@@ -698,7 +725,7 @@ impl NegamaxTT {
                     );
 
                     if value > alpha && value < beta {
-                        value = -self.negamax_p::<{ limits }>(
+                        value = -self.negamax_p::<{ LIMITS }>(
                             board,
                             depth - 1,
                             -beta,
@@ -758,7 +785,7 @@ impl NegamaxTT {
                 .restricitons
                 .max_nodes
                 .saturating_sub(self.info.nodes_searched);
-            let mut res = self.negamax::<limits>(
+            let mut res = self.negamax::<LIMITS>(
                 board,
                 depth,
                 self.info.restricitons,
@@ -778,7 +805,7 @@ impl NegamaxTT {
                 .restricitons
                 .max_nodes
                 .saturating_sub(self.info.nodes_searched);
-            let mut res = self.negamax::<limits>(
+            let mut res = self.negamax::<LIMITS>(
                 board,
                 depth,
                 self.info.restricitons,
@@ -840,7 +867,7 @@ impl NegamaxTT {
         None
     }
 
-    fn negamax_p<const limits: u8>(
+    fn negamax_p<const LIMITS: u8>(
         &mut self,
         board: &mut Board,
         depth: u8,
@@ -850,7 +877,7 @@ impl NegamaxTT {
         made_nullmove: bool,
         in_check: bool,
     ) -> i16 {
-        if limits == Restrictions::TIME && self.info.timed_nodes > Self::CHECK_TIME_NODES {
+        if LIMITS == Restrictions::TIME && self.info.timed_nodes > Self::CHECK_TIME_NODES {
             if Instant::now() > self.info.restricitons.end {
                 self.info.abort();
                 return 0;
@@ -858,7 +885,7 @@ impl NegamaxTT {
             self.info.reset_timed_nodes();
         }
 
-        if limits == Restrictions::NODES
+        if LIMITS == Restrictions::NODES
             && self.info.nodes_searched >= self.info.restricitons.max_nodes
         {
             self.info.abort();
@@ -881,8 +908,8 @@ impl NegamaxTT {
         }
 
         if depth == 0 || self.info.search_stack_full() {
-            self.info.nodes_searched -= 1;
-            return self.quiesence_search::<limits>(board, alpha, beta);
+            self.info.decrement_nodes();
+            return self.quiesence_search::<LIMITS>(board, alpha, beta);
         }
 
         let has_heavy_material = !board.only_king_and_pawns();
@@ -898,7 +925,7 @@ impl NegamaxTT {
             if !is_pv && !made_nullmove && Self::nullmove_depth_possible(depth) {
                 let reduction = 3 + depth / 3;
                 board.make_nullmove();
-                let val = -self.negamax_p::<{ limits }>(
+                let val = -self.negamax_p::<{ LIMITS }>(
                     board,
                     depth - reduction,
                     -beta,
@@ -925,7 +952,7 @@ impl NegamaxTT {
                 let prob_cut_beta = beta.saturating_add(margin);
                 let prob_cut_alpha = prob_cut_beta - 1;
 
-                let shallow_eval = self.negamax_p::<{ limits }>(
+                let shallow_eval = self.negamax_p::<{ LIMITS }>(
                     board,
                     depth.saturating_sub(PROB_DEPTH_REDUCTION()),
                     prob_cut_alpha,
@@ -943,7 +970,7 @@ impl NegamaxTT {
             if depth <= RAZORING_MAX_DEPTH() {
                 let razor_margin = Self::razoring_margin(depth);
                 if static_eval.saturating_add(razor_margin) < alpha {
-                    let q_eval = self.quiesence_search::<limits>(board, alpha - 1, alpha);
+                    let q_eval = self.quiesence_search::<LIMITS>(board, alpha - 1, alpha);
 
                     if q_eval < alpha {
                         return q_eval;
@@ -1042,7 +1069,7 @@ impl NegamaxTT {
 
                     let reduced_depth = depth.saturating_sub(1 + reduction);
 
-                    value = -self.negamax_p::<{ limits }>(
+                    value = -self.negamax_p::<{ LIMITS }>(
                         board,
                         reduced_depth,
                         -alpha - 1,
@@ -1059,7 +1086,7 @@ impl NegamaxTT {
 
                 if needs_full_search {
                     if first_move {
-                        value = -self.negamax_p::<{ limits }>(
+                        value = -self.negamax_p::<{ LIMITS }>(
                             board,
                             new_depth,
                             -beta,
@@ -1070,7 +1097,7 @@ impl NegamaxTT {
                         );
                         first_move = false;
                     } else {
-                        value = -self.negamax_p::<{ limits }>(
+                        value = -self.negamax_p::<{ LIMITS }>(
                             board,
                             new_depth,
                             -alpha - 1,
@@ -1081,7 +1108,7 @@ impl NegamaxTT {
                         );
 
                         if value > alpha && value < beta {
-                            value = -self.negamax_p::<{ limits }>(
+                            value = -self.negamax_p::<{ LIMITS }>(
                                 board,
                                 new_depth,
                                 -beta,

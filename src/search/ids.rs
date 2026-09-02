@@ -46,13 +46,13 @@ impl IDSearch {
         self.search_algo.change_hash_size(mb);
     }
 
-    pub fn ids<const Limit: u8>(
+    pub fn ids<const LIMIT: u8>(
         &mut self,
         board: &mut Board,
         limits: &SearchLimits,
     ) -> Option<SearchResult> {
         debug_assert!(
-            if Limit == Restrictions::TIME && limits.base_inc.is_none() {
+            if LIMIT == Restrictions::TIME && limits.base_inc.is_none() {
                 false
             } else {
                 true
@@ -60,7 +60,7 @@ impl IDSearch {
             "Time Search without base and inc"
         );
         debug_assert!(
-            if Limit == Restrictions::NODES && limits.max_nodes.is_none() {
+            if LIMIT == Restrictions::NODES && limits.max_nodes.is_none() {
                 false
             } else {
                 true
@@ -68,7 +68,7 @@ impl IDSearch {
             "Node Search without max_nodes"
         );
         debug_assert!(
-            if Limit == Restrictions::DEPTH && limits.max_depth.is_none() {
+            if LIMIT == Restrictions::DEPTH && limits.max_depth.is_none() {
                 false
             } else {
                 true
@@ -78,12 +78,12 @@ impl IDSearch {
         let mut restrictions = Restrictions::new();
 
         let start_time = Instant::now();
-        let (base, inc) = if Limit == Restrictions::TIME {
+        let (base, inc) = if LIMIT == Restrictions::TIME {
             limits.base_inc.unwrap()
         } else {
             (0, 0)
         };
-        if Limit == Restrictions::NODES {
+        if LIMIT == Restrictions::NODES {
             restrictions.max_nodes = limits.max_nodes.unwrap();
         }
         let soft_bound = base / 20 + inc / 2;
@@ -95,7 +95,7 @@ impl IDSearch {
         let soft_bound = Duration::from_millis(soft_bound);
         let mut nodes_searched = 0;
 
-        let max_depth = if Limit == Restrictions::DEPTH {
+        let max_depth = if LIMIT == Restrictions::DEPTH {
             (limits.max_depth.unwrap() + 1).min(MAX_SEARCH_DEPTH as u8)
         } else {
             MAX_SEARCH_DEPTH as u8
@@ -104,11 +104,11 @@ impl IDSearch {
         let mut best_res: Option<SearchResult> = None;
 
         for current_depth in 1..max_depth {
-            if Limit == Restrictions::TIME && start_time.elapsed() > soft_bound {
+            if LIMIT == Restrictions::TIME && start_time.elapsed() > soft_bound {
                 break;
             }
 
-            if let Some(result) = self.search_algo.negamax::<{ Limit }>(
+            if let Some(result) = self.search_algo.negamax::<{ LIMIT }>(
                 board,
                 current_depth as u8,
                 restrictions,
@@ -121,6 +121,8 @@ impl IDSearch {
                     restrictions.max_nodes.saturating_sub(result.nodes_searched);
                 if result.best_move != NULL_MOVE {
                     best_res = Some(result);
+                } else {
+                    break;
                 }
             } else {
                 break;

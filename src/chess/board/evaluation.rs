@@ -92,6 +92,13 @@ impl Board {
         ((eval ^ mask) - mask) as i16
     }
 
+    pub fn piece_eval(&self, p: Piece) -> i16 {
+        let game_phase_i32 = self.game_phase as i32;
+        let mg_i32 = MG_VALUE[p.index()] as i32;
+        let eg_i32 = EG_VALUE[p.index()] as i32;
+        ((game_phase_i32 * mg_i32 + (24 - game_phase_i32) * eg_i32) / 24) as i16
+    }
+
     #[inline(always)]
     pub fn add_eval<S: Side>(&mut self, p: Piece, s: Square) {
         self.eval_mg += MG[p.index() + S::OFFSET][s.index()] * S::MULTIPLIER;

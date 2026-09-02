@@ -100,7 +100,7 @@ impl AdvancedSorting {
 
                 MoveGenStage::YieldGoodCaptures => {
                     if self.current_capture < self.num_good_captures {
-                        let m = self.captures.selection_sort_next().unwrap();
+                        let m = self.captures.selection_sort_next().unwrap().0;
                         self.current_capture += 1;
 
                         if m != self.tt_move {
@@ -117,7 +117,7 @@ impl AdvancedSorting {
                 }
 
                 MoveGenStage::YieldQuiets => {
-                    if let Some(m) = self.quiets.selection_sort_next() {
+                    if let Some((m, _)) = self.quiets.selection_sort_next() {
                         if m != self.tt_move {
                             return Some(m);
                         }
@@ -128,7 +128,7 @@ impl AdvancedSorting {
 
                 MoveGenStage::YieldBadCaptures => {
                     if self.current_capture < self.num_captures {
-                        let m = self.captures.selection_sort_next().unwrap();
+                        let m = self.captures.selection_sort_next().unwrap().0;
                         self.current_capture += 1;
                         if m != self.tt_move {
                             return Some(m);
@@ -247,10 +247,13 @@ impl AdvancedSorting {
         let captured_piece = board.get_captured(m);
         let moved_piece = board.get_piece_w_color(m.from());
 
-        debug_assert!(captured_piece < NUM_PIECES, "Captured piece is invalid");
+        debug_assert!(
+            captured_piece.index() < NUM_PIECES,
+            "Captured piece is invalid"
+        );
         let static_exchange_e = Self::static_e_e(board, m);
-        let victim_score = Self::VICTIM_VALS[captured_piece];
-        let attacker_bonus = history_table.capture_val(moved_piece, m, captured_piece);
+        let victim_score = Self::VICTIM_VALS[captured_piece.index()];
+        let attacker_bonus = history_table.capture_val(moved_piece, m, captured_piece.index());
         return victim_score + attacker_bonus + static_exchange_e;
     }
 
@@ -258,25 +261,19 @@ impl AdvancedSorting {
         board: &Board,
         hash_move: Move,
         history_table: &HistroyT,
-    ) -> MoveList<64> {
-        let mut moves_evaluated = [(NULL_MOVE, 0i32); 64];
+    ) -> EvaluatedMoveList<MOVE_GEN_SIZE> {
+        let mut moves_evaluated: EvaluatedMoveList<{ MOVE_GEN_SIZE }> = EvaluatedMoveList::new();
         let moves = board.generate_captures();
-        let num_captures = moves.size();
-        for (i, &m) in moves.as_slice().iter().enumerate() {
+
+        for &m in moves.as_slice().iter() {
             let eval = if m == hash_move {
                 Self::HASH_M_VAL
             } else {
                 Self::eval_capture(board, m, history_table)
             };
-            moves_evaluated[i] = (m, eval);
+            moves_evaluated.push(m, eval);
         }
-        moves_evaluated.sort_by_key(|entry| -entry.1);
-
-        let mut result = [NULL_MOVE; 64];
-        for i in 0..num_captures {
-            result[i] = moves_evaluated[i].0;
-        }
-        MoveList::from_slice(result, num_captures)
+        moves_evaluated
     }
 }
 

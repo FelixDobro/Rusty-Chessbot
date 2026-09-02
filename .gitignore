@@ -1,8 +1,10 @@
 /target
 
 .vscode/
+.cargo/
 
 logs/
+
 results/
 engines/
 *.ipynb

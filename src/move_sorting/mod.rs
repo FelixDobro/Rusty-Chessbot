@@ -50,7 +50,7 @@ impl<const N: usize> EvaluatedMoveList<N> {
     }
 
     #[inline(always)]
-    pub fn selection_sort_next(&mut self) -> Option<Move> {
+    pub fn selection_sort_next(&mut self) -> Option<(Move, i32)> {
         if self.count == self.search_index {
             return None;
         }
@@ -76,7 +76,7 @@ impl<const N: usize> EvaluatedMoveList<N> {
         }
 
         self.search_index += 1;
-        Some(best_item.0)
+        Some(best_item)
     }
 
     #[allow(dead_code)]
@@ -116,12 +116,12 @@ mod test {
 
         assert_eq!(
             move_list.selection_sort_next(),
-            Some(first_move),
+            Some((first_move, 100)),
             "Selection sort does not find right move"
         );
         assert_eq!(
             move_list.selection_sort_next(),
-            Some(second_move),
+            Some((second_move, -100)),
             "Selection sort does not find right move"
         );
     }
@@ -144,7 +144,7 @@ mod test {
         );
 
         assert!(
-            selection_recieved.map_or(false, |m| m == recieved.0),
+            selection_recieved.map_or(false, |m| m == recieved),
             "selection_sort does not find right move"
         );
         assert!(
@@ -172,25 +172,25 @@ mod test {
 
         let selection_recieved = moves.selection_sort_next();
         assert!(
-            selection_recieved.map_or(false, |m| m == m3),
+            selection_recieved.map_or(false, |(m, _)| m == m3),
             "selection_sort does not find next hightest_value move"
         );
 
         let selection_recieved = moves.selection_sort_next();
         assert!(
-            selection_recieved.map_or(false, |m| m == m2),
+            selection_recieved.map_or(false, |(m, _)| m == m2),
             "selection_sort does not find next hightest_value move"
         );
 
         let selection_recieved = moves.selection_sort_next();
         assert!(
-            selection_recieved.map_or(false, |m| m == m1),
+            selection_recieved.map_or(false, |(m, _)| m == m1),
             "selection_sort does not find next hightest_value move"
         );
 
         let selection_recieved = moves.selection_sort_next();
         assert!(
-            selection_recieved.map_or(false, |m| m == m4),
+            selection_recieved.map_or(false, |(m, _)| m == m4),
             "selection_sort does not find next hightest_value move"
         );
 

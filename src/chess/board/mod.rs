@@ -410,28 +410,12 @@ impl Board {
         S::shift_up(board) & !self.occupied
     }
 
-    pub fn w_pawn_attacks(&self) -> Bitboard {
-        let forward = self.piece_bb[White.offset() + Pawn.index()] << 8;
-        let mut result = EMPTY_BB;
-        let black_pieces = self.black_pieces();
-        let left_side = (forward << 1) & !FILE_A;
-        result |= left_side & (black_pieces | self.en_passant);
-
-        let right_side = (forward >> 1) & !FILE_H;
-        result |= right_side & (black_pieces | self.en_passant);
-        result
-    }
-
-    pub fn b_pawn_attacks(&self) -> Bitboard {
-        let forward = self.piece_bb[Black.offset() + Pawn.index()] >> 8;
-        let mut result = EMPTY_BB;
-        let white_pieces = self.white_pieces();
-        let left_side = (forward << 1) & !FILE_A;
-        result |= left_side & (white_pieces | self.en_passant);
-
-        let right_side = (forward >> 1) & !FILE_H;
-        result |= right_side & (white_pieces | self.en_passant);
-        result
+    pub fn pawn_attacks<S: Side>(&self) -> Bitboard {
+        let pawns = self.piece_bb[S::OFFSET + Pawn.index()];
+        let left_attacks = S::pawn_attack_pattern_l(pawns);
+        let right_attacks = S::pawn_attack_pattern_r(pawns);
+        let opps = self.color_bb[S::OPPOSITE::INDEX];
+        (opps & left_attacks) | (opps & right_attacks)
     }
 
     pub fn rook_pseudolegals<S: Side>(&self) -> Bitboard {
@@ -681,12 +665,12 @@ impl Board {
     }
 
     #[inline(always)]
-    pub fn get_captured(&self, m: Move) -> usize {
+    pub fn get_captured(&self, m: Move) -> Piece {
         let captured = self.piece[m.to().index()];
         if captured != Empty {
-            return captured.index();
+            return captured;
         };
-        Pawn.index()
+        Pawn
     }
 
     #[inline(always)]
@@ -701,6 +685,18 @@ impl Board {
         );
 
         last_state.captured_piece.index()
+    }
+
+    pub fn can_promo(&self) -> bool {
+        match self.turn {
+            White => self.promo::<WhiteSide>(),
+            Black => self.promo::<BlackSide>(),
+            _ => panic!(),
+        }
+    }
+
+    fn promo<S: Side>(&self) -> bool {
+        self.pawn_attacks::<S>() & S::LAST_RANK != EMPTY_BB
     }
 
     pub fn count_material(&self) -> i16 {
@@ -1285,5 +1281,40 @@ mod test {
     fn cannot_make_nullmove_check() {
         let board = Board::from_fen("8/8/8/8/8/2k5/3pPP2/2K3N1 w - d3 0 1").unwrap();
         assert!(!board.can_make_nullmove(10, false, true));
+    }
+
+    #[test]
+    fn white_can_promo() {
+        let board =
+            Board::from_fen("rnbqkbnr/ppppppP1/7p/8/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        assert!(board.can_promo(), "White can promote")
+    }
+
+    #[test]
+    fn white_cannot_promo_1() {
+        let board =
+            Board::from_fen("rnbqkbnr/pppppp2/6P1/7p/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        assert!(!board.can_promo(), "White cannot promote")
+    }
+
+    #[test]
+    fn white_cannot_promo_2() {
+        let board =
+            Board::from_fen("rnbqkQnr/pppppp2/8/8/8/8/PPPPpPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        assert!(!board.can_promo(), "White cannot promote")
+    }
+
+    #[test]
+    fn black_can_promo() {
+        let board =
+            Board::from_fen("rnbqkQnr/pppppp2/8/8/8/8/PPPPpPPP/RNBQKBNR b KQkq - 0 1").unwrap();
+        assert!(board.can_promo(), "Black can promote")
+    }
+
+    #[test]
+    fn black_cannot_promo() {
+        let board =
+            Board::from_fen("rnbqkbnr/ppppppP1/8/7p/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1").unwrap();
+        assert!(!board.can_promo(), "Black cannot promote")
     }
 }
