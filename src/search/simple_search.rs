@@ -126,6 +126,19 @@ impl<const N: usize> SearchStack<N> {
 
         &self.moves[start..self.count]
     }
+
+    #[inline(always)]
+    pub fn last_two(&self) -> Option<(&StackItem, &StackItem)> {
+        if self.count > 1 {
+            return Some((&self.moves[self.count - 1], &self.moves[self.count - 2]));
+        }
+        None
+    }
+
+    #[inline(always)]
+    pub fn size(&self) -> usize {
+        self.count
+    }
 }
 
 type ContinuationHistory = [[[[i16; 64]; NUM_PIECES * 2]; 64]; NUM_PIECES * 2];
@@ -317,6 +330,7 @@ impl HistroyT {
 
     #[inline(always)]
     pub fn capture_val(&self, moved_piece: usize, m: Move, captured_piece: usize) -> i32 {
+        debug_assert!(m.is_capture(), "Non capture move");
         self.capture_history[moved_piece][m.to().index()][captured_piece] as i32
     }
 }
@@ -579,6 +593,26 @@ impl NegamaxTT {
     fn delta_cutoff(stand_pat: i16, alpha: i16, m: Move, board: &Board) -> bool {
         let p_val = board.piece_eval(board.get_captured(m));
         !m.is_promo() && stand_pat + p_val + DELTA_MARGIN() < alpha
+    }
+
+    #[inline(always)]
+    fn capture_extension(&self, pv: bool, is_capture: bool, board: &Board) -> u8 {
+        if is_capture && pv {
+            if let Some((played, before)) = self.info.search_stack.last_two() {
+                if played.m.to() == before.m.to() {
+                    if self.info.history_tables.capture_val(
+                        played.moved_piece,
+                        played.m,
+                        board.get_last_captured(),
+                    ) > CAPTURE_HISTORY_EXTENSION_THRESHOLD()
+                    {
+                        return 1;
+                    }
+                }
+            }
+        }
+
+        0
     }
 
     pub fn quiesence_search<const LIMITS: u8>(
@@ -898,6 +932,7 @@ impl NegamaxTT {
         }
 
         let is_pv = beta.saturating_sub(alpha) > 1;
+        let depth = depth.saturating_add(if in_check { 1 } else { 0 });
 
         let mut tt_move = NULL_MOVE;
         if let Some(entry) = self.ttable.get(board.get_hash()) {
@@ -1027,26 +1062,7 @@ impl NegamaxTT {
                     }
                 }
 
-                // Check Extension
-                let mut extension: u8 = if gives_check && ply < CHECK_EXTENSION_MAX_PLY() {
-                    1
-                } else {
-                    0
-                };
-
-                // Capture Extension
-                // if is_pv
-                //     && is_capture
-                //     && self.info.history_tables.capture_val(
-                //         moved_piece,
-                //         m,
-                //         board.get_last_captured(),
-                //     ) > Self::CAPTURE_HISTORY_EXTENSION_THRESHOLD
-                // {
-                //     extension = extension.wrapping_add(1);
-                // }
-
-                let new_depth = depth - 1 + extension;
+                let new_depth = depth - 1 + self.capture_extension(is_pv, is_capture, board);
                 let mut needs_full_search = true;
                 let mut value = 0;
 
@@ -1058,15 +1074,7 @@ impl NegamaxTT {
                     && !in_check
                     && !gives_check
                 {
-                    let mut reduction = self.get_LMR_reduction(depth, num_moves_played);
-                    let history_score = self.info.history_tables.main_val(current_turn, m);
-
-                    if history_score > HISTORY_EXTENSION_SCORE() {
-                        reduction = reduction.saturating_sub(1);
-                    } else {
-                        reduction += 1;
-                    }
-
+                    let reduction = self.get_LMR_reduction(depth, num_moves_played);
                     let reduced_depth = depth.saturating_sub(1 + reduction);
 
                     value = -self.negamax_p::<{ LIMITS }>(

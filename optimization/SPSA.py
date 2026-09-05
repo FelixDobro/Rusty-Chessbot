@@ -15,11 +15,11 @@ from tqdm import tqdm
 CONCURRENCY = 10
 HASH_SIZE = 100    # Warning: 12 * 2 * HASH_SIZE is the number of mb used for training
 ENGINE_CMD = "./engines/unoptimized"
-RUN = "FEW_GAMES_PER_ITER"
+RUN = "500_k_nodes"
 NUM_OPENING_MOVES = 10
-NUM_ITERATIONS = 5_000
+NUM_ITERATIONS = 2_000
 GAMES_PER_ITERATION = 5 # * 2 because every opening is played twice
-NODES = 50_000
+NODES = 500_000
 
 VERBOSE = os.environ.get("verbose", True)
 RESULT_UPDATE = 25
