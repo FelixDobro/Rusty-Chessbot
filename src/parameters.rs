@@ -153,66 +153,72 @@ macro_rules! define_tuning_params {
 
     };
 }
-
 define_tuning_params!(
     // Reverse Futility Pruning
-    RFP_BIAS: i16 = 13, UciOptionType::new_spin(13, 0, 300), 1;
-    RFP_LINEAR: i16 = 23, UciOptionType::new_spin(23, 0, 300), 1;
-    RFP_QUADRATIC: i16 = 33, UciOptionType::new_spin(33, 0, 300), 1;
+    RFP_BIAS: i16 = 47, UciOptionType::new_spin(47, 0, 300), 1;
+    RFP_LINEAR: i16 = 28, UciOptionType::new_spin(28, 0, 300), 1;
+    RFP_QUADRATIC: i16 = 3, UciOptionType::new_spin(3, 0, 300), 1;
     // Futility Pruning
-    FUTILITY_BIAS: i16 = 20, UciOptionType::new_spin(20, 0, 400), 1;
-    FUTILITY_LINEAR: i16 = 18, UciOptionType::new_spin(18, 0, 300), 1;
-    FUTILITY_QUADRATIC: i16 = 7, UciOptionType::new_spin(7, 0, 300), 1;
-    FUTILITY_DEPTH: u8 = 5, UciOptionType::new_spin(5, 0, 10), 1;
+    FUTILITY_BIAS: i16 = 53, UciOptionType::new_spin(53, 0, 400), 1;
+    FUTILITY_LINEAR: i16 = 59, UciOptionType::new_spin(59, 0, 300), 1;
+    FUTILITY_QUADRATIC: i16 = 62, UciOptionType::new_spin(62, 0, 300), 1;
+    FUTILITY_DEPTH: u8 = 4, UciOptionType::new_spin(4, 0, 10), 1;
     // Prob Cut
-    PROB_MIN_DEPTH: u8 = 6, UciOptionType::new_spin(6, 0, 15), 1;
-    PROB_DEPTH_REDUCTION: u8 = 7, UciOptionType::new_spin(7, 1, 15), 1;
-    PROB_BIAS: i16 = 21, UciOptionType::new_spin(21, 0, 300), 1;
-    PROB_LINEAR: i16 = 23, UciOptionType::new_spin(23, 0, 200), 1;
-    PROB_QUADRATIC: i16 = 22, UciOptionType::new_spin(22, 0, 100), 1;
+    PROB_MIN_DEPTH: u8 = 5, UciOptionType::new_spin(5, 0, 15), 1;
+    PROB_DEPTH_REDUCTION: u8 = 6, UciOptionType::new_spin(6, 1, 15), 1;
+    PROB_BIAS: i16 = 32, UciOptionType::new_spin(32, 0, 300), 1;
+    PROB_LINEAR: i16 = 3, UciOptionType::new_spin(3, 0, 200), 1;
+    PROB_QUADRATIC: i16 = 12, UciOptionType::new_spin(12, 0, 100), 1;
     // Razoring
     RAZORING_MAX_DEPTH: u8 = 4, UciOptionType::new_spin(4, 0, 10), 1;
-    RAZORING_BIAS: i16 = 332, UciOptionType::new_spin(332, 0, 600), 1;
-    RAZORING_LINEAR: i16 = 162, UciOptionType::new_spin(162, 0, 400), 1;
-    RAZORING_QUADRATIC: i16 = 45, UciOptionType::new_spin(45, 0, 150), 1;
+    RAZORING_BIAS: i16 = 383, UciOptionType::new_spin(383, 0, 600), 1;
+    RAZORING_LINEAR: i16 = 146, UciOptionType::new_spin(146, 0, 400), 1;
+    RAZORING_QUADRATIC: i16 = 36, UciOptionType::new_spin(36, 0, 150), 1;
 
     // LMR
-    LMR_MIN_DEPTH: u8 = 2, UciOptionType::new_spin(2, 0, 10), 1;
-    LMR_NUM_MOVES_PLAYED: usize = 8, UciOptionType::new_spin(8, 0, 20), 1;
-    LMR_FACTOR: f64 = 2.06, UciOptionType::new_spin(206, 100, 600), 100;
+    LMR_MIN_DEPTH: u8 = 1, UciOptionType::new_spin(1, 0, 10), 1;
+    LMR_NUM_MOVES_PLAYED: usize = 5, UciOptionType::new_spin(5, 0, 20), 1;
+    LMR_FACTOR: f64 = 1.51, UciOptionType::new_spin(151, 100, 600), 100;
+
+    // Late Move Pruning
+    LMP_MAX_DEPTH: u8 = 11, UciOptionType::new_spin(11, 0, 15), 1;
+    LMP_BIAS: usize = 0, UciOptionType::new_spin(0, 0, 15), 1;
+    LMP_QUADRATIC: usize = 3, UciOptionType::new_spin(3, 0, 15), 1;
+    LMP_DIV: usize = 4, UciOptionType::new_spin(4, 1, 15), 1;
 
     // Extensions
-    CHECK_EXTENSION_MAX_PLY: usize = 5, UciOptionType::new_spin(5, 0, 63), 1;
+    CHECK_EXTENSION_MAX_PLY: usize = 13, UciOptionType::new_spin(13, 0, 63), 1;
 
     // Quiesence Search
-    DELTA_MARGIN: i16 = 191, UciOptionType::new_spin(191, 100, 275), 1;
+    DELTA_MARGIN: i16 = 177, UciOptionType::new_spin(177, 100, 275), 1;
 
     // Aspiration windows
-    FIRST_WINDOW: i16 = 39, UciOptionType::new_spin(39, 5, 50), 1;
-    SECOND_WINDOW: i16 = 89, UciOptionType::new_spin(89, 80, 150), 1;
+    FIRST_WINDOW: i16 = 27, UciOptionType::new_spin(27, 5, 50), 1;
+    SECOND_WINDOW: i16 = 88, UciOptionType::new_spin(88, 80, 150), 1;
 
     // HISTORY_UPDATES
     CAPTURE_PUNISH_QUADRATIC: i32 = 1, UciOptionType::new_spin(1, 0, 2), 1;
-    CAPTURE_PUNISH_LINEAR: i32 = 58, UciOptionType::new_spin(58, 0, 200), 1;
+    CAPTURE_PUNISH_LINEAR: i32 = 46, UciOptionType::new_spin(46, 0, 200), 1;
     CAPTURE_REWARD_QUADRATIC: i32 = 1, UciOptionType::new_spin(1, 0, 2), 1;
-    CAPTURE_REWARD_LINEAR: i32 = 31, UciOptionType::new_spin(31, 0, 200), 1;
+    CAPTURE_REWARD_LINEAR: i32 = 33, UciOptionType::new_spin(33, 0, 200), 1;
 
     MAIN_PUNISH_QUADRATIC: i32 = 1, UciOptionType::new_spin(1, 0, 2), 1;
-    MAIN_PUNISH_LINEAR: i32 = 37, UciOptionType::new_spin(37, 0, 200), 1;
+    MAIN_PUNISH_LINEAR: i32 = 42, UciOptionType::new_spin(42, 0, 200), 1;
     MAIN_REWARD_QUADRATIC: i32 = 1, UciOptionType::new_spin(1, 0, 2), 1;
-    MAIN_REWARD_LINEAR: i32 = 51, UciOptionType::new_spin(51, 0, 200), 1;
+    MAIN_REWARD_LINEAR: i32 = 52, UciOptionType::new_spin(52, 0, 200), 1;
 
     CONTINUATION_PUNISH_QUADRATIC: i32 = 1, UciOptionType::new_spin(1, 0, 2), 1;
-    CONTINUATION_PUNISH_LINEAR: i32 = 87, UciOptionType::new_spin(87, 0, 200), 1;
+    CONTINUATION_PUNISH_LINEAR: i32 = 119, UciOptionType::new_spin(119, 0, 200), 1;
     CONTINUATION_REWARD_QUADRATIC: i32 = 1, UciOptionType::new_spin(1, 0, 2), 1;
-    CONTINUATION_REWARD_LINEAR: i32 = 56, UciOptionType::new_spin(56, 0, 200), 1;
-
+    CONTINUATION_REWARD_LINEAR: i32 = 37, UciOptionType::new_spin(37, 0, 200), 1;
 
     // History reduction thresholds
-    CAPTURE_HISTORY_EXTENSION_THRESHOLD: i32 = 514, UciOptionType::new_spin(514, 0, 2isize.pow(13) - 1), 1;
-    HISTORY_EXTENSION_SCORE: i32 = 2266, UciOptionType::new_spin(2266, 0, 2isize.pow(13) - 1), 1;
+    CAPTURE_HISTORY_EXTENSION_THRESHOLD: i32 = 473, UciOptionType::new_spin(473, 0, 2isize.pow(13) - 1), 1;
+    HISTORY_EXTENSION_SCORE: i32 = 1853, UciOptionType::new_spin(1853, 0, 2isize.pow(13) - 1), 1;
 
-
+    // SEE Pruning
+    SEE_QUIET: i32 = 118272, UciOptionType::new_spin(118272, 0, 2isize.pow(18)), 1;
+    SEE_CAPTURE: i32 = 107598, UciOptionType::new_spin(107598, 0, 2isize.pow(18)), 1;
 );
 
 #[cfg(feature = "tuning")]

@@ -615,6 +615,38 @@ impl NegamaxTT {
         0
     }
 
+    #[inline(always)]
+    fn see_pruning(
+        is_pv: bool,
+        in_check: bool,
+        depth: u8,
+        board: &Board,
+        m: Move,
+        tt_move: Move,
+        num_moves_played: usize,
+    ) -> bool {
+        let depth = depth as i32;
+
+        if is_pv || in_check || num_moves_played == 0 || m == tt_move || m.is_promo() {
+            return false;
+        }
+        let see = AdvancedSorting::static_e_e(board, m);
+        if m.is_quiet() {
+            if see
+                < (-1i32)
+                    .saturating_mul(SEE_QUIET())
+                    .saturating_mul(depth * depth)
+            {
+                return true;
+            }
+        } else {
+            if see < (-1i32).saturating_mul(SEE_CAPTURE()).saturating_mul(depth) {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn quiesence_search<const LIMITS: u8>(
         &mut self,
         board: &mut Board,
@@ -1019,6 +1051,7 @@ impl NegamaxTT {
         let mut sorter = AdvancedSorting::new(tt_move);
         let current_turn = board.get_turn();
         let mut num_moves_played = 0;
+        let mut moves_pruned = 0;
         let mut first_move = true;
         let mut quiets_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
         let mut captures_played: MoveList<MOVE_GEN_SIZE> = MoveList::new();
@@ -1026,6 +1059,19 @@ impl NegamaxTT {
 
         while let Some(m) = sorter.next(board, &self.info.history_tables, &self.info.search_stack) {
             debug_assert_ne!(m, NULL_MOVE);
+            if Self::see_pruning(is_pv, in_check, depth, board, m, tt_move, num_moves_played) {
+                moves_pruned += 1;
+                continue;
+            }
+            if !is_pv && !in_check && m.is_quiet() && depth <= LMP_MAX_DEPTH() {
+                let lmp_threshold =
+                    LMP_BIAS() + (LMP_QUADRATIC() * depth as usize * depth as usize) / LMP_DIV();
+
+                if quiets_played.size() > lmp_threshold {
+                    moves_pruned += 1;
+                    continue;
+                }
+            }
 
             let moved_piece = board.get_piece_w_color(m.from());
             let stack_item = StackItem::new(m, moved_piece);
@@ -1042,8 +1088,6 @@ impl NegamaxTT {
                 if is_capture {
                     captures_played.push(m);
                 }
-
-                num_moves_played += 1;
 
                 // Futility Pruning
                 if !in_check
@@ -1062,6 +1106,7 @@ impl NegamaxTT {
                     }
                 }
 
+                num_moves_played += 1;
                 let new_depth = depth - 1 + self.capture_extension(is_pv, is_capture, board);
                 let mut needs_full_search = true;
                 let mut value = 0;
@@ -1169,7 +1214,11 @@ impl NegamaxTT {
         }
 
         if num_moves_played == 0 {
-            let res = board.result(in_check);
+            let res = if moves_pruned == 0 {
+                board.result(in_check)
+            } else {
+                alpha
+            };
             self.ttable.insert(TTableEntry {
                 hash: board.get_hash(),
                 best_move: if best_move != NULL_MOVE {
