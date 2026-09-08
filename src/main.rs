@@ -5,15 +5,11 @@ mod parameters;
 mod search;
 mod uci;
 
-use crate::search::ids::IDSearch;
-use crate::search::simple_search::NegamaxTT;
 use crate::uci::UCIManager;
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let negamax = NegamaxTT::new(100 as usize);
-    let search = IDSearch::new(negamax);
-    let mut mangager = UCIManager::new(search);
+    let mut mangager = UCIManager::new();
     mangager.start_protocol()?;
 
     Ok(())

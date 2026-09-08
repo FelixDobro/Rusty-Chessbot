@@ -12,14 +12,14 @@ from tqdm import tqdm
 
 
 
-CONCURRENCY = 10
+CONCURRENCY = 12
 HASH_SIZE = 100    # Warning: 12 * 2 * HASH_SIZE is the number of mb used for training
 ENGINE_CMD = "./engines/unoptimized"
-RUN = "Pruning"
+RUN = "Big"
 NUM_OPENING_MOVES = 10
 NUM_ITERATIONS = 3_000
-GAMES_PER_ITERATION = 5 # * 2 because every opening is played twice
-NODES = 150_000
+GAMES_PER_ITERATION = 6 # * 2 because every opening is played twice
+NODES = 500_000
 
 VERBOSE = os.environ.get("verbose", True)
 RESULT_UPDATE = 50
@@ -61,7 +61,7 @@ class MatchMaker:
         self.pos.close()
         self.neg.close()
 
-    def play_game(self, board: chess.Board, pos_white: bool):
+    def play_game(self, board: chess.Board, pos_white):
         white = self.pos if pos_white else self.neg
         black = self.pos if white == self.neg else self.neg
 

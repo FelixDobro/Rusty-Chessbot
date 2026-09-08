@@ -1,150 +1,112 @@
-use crate::chess::board::Board;
-use crate::chess::chess_move::NULL_MOVE;
-use crate::parameters::FIRST_WINDOW;
-use crate::search::simple_search::NegamaxTT;
-use crate::search::{GLOBAL_MAX_SEARCH_NODES, MAX_SEARCH_DEPTH, SearchLimits, SearchResult};
-use std::time::{Duration, Instant};
+// use crate::chess::board::Board;
+// use crate::chess::chess_move::{Move, NULL_MOVE};
+// use crate::move_sorting::advanced_sorting::AdvancedSorting;
+// use crate::parameters::FIRST_WINDOW;
+// use crate::search::simple_search::{HistroyT, Search, SearchStack};
+// use crate::search::{GLOBAL_MAX_SEARCH_NODES, MAX_SEARCH_DEPTH, SearchLimits, SearchResult};
+// use std::sync::Arc;
+// use std::sync::atomic::AtomicU64;
+// use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-#[derive(Clone, Copy)]
-pub struct Restrictions {
-    pub max_nodes: u64,
-    pub end: Instant,
-}
+// pub trait Millis {
+//     fn now_millis() -> u64 {
+//         SystemTime::now()
+//             .duration_since(UNIX_EPOCH)
+//             .unwrap_or_default()
+//             .as_millis() as u64
+//     }
+// }
 
-impl Restrictions {
-    pub const NODES: u8 = 1 << 0;
-    pub const TIME: u8 = 1 << 1;
-    pub const DEPTH: u8 = 1 << 2;
+// impl Millis for SystemTime {}
 
-    pub fn new() -> Self {
-        Self {
-            max_nodes: GLOBAL_MAX_SEARCH_NODES,
-            end: Instant::now(),
-        }
-    }
-}
+// #[derive(Clone)]
+// pub struct Restrictions {
+//     pub max_nodes: u64,
+//     pub end: Arc<AtomicU64>,
+// }
 
-pub struct IDSearch {
-    search_algo: NegamaxTT,
-    last_val: i16,
-}
+// impl Restrictions {
+//     pub const NODES: u8 = 1 << 0;
+//     pub const TIME: u8 = 1 << 1;
+//     pub const DEPTH: u8 = 1 << 2;
 
-impl IDSearch {
-    pub fn new(algo: NegamaxTT) -> Self {
-        Self {
-            search_algo: algo,
-            last_val: 0,
-        }
-    }
+//     pub fn new() -> Self {
+//         Self {
+//             max_nodes: GLOBAL_MAX_SEARCH_NODES,
+//             end: Arc::new(AtomicU64::default()),
+//         }
+//     }
+// }
 
-    pub fn reset(&mut self) {
-        self.last_val = 0;
-        self.search_algo.clear();
-    }
+// pub struct IDSearch {
+//     search_algo: Search,
+//     last_val: i16,
+// }
 
-    pub fn change_hash(&mut self, mb: usize) {
-        self.search_algo.change_hash_size(mb);
-    }
+// impl IDSearch {
+//     pub fn new(algo: Search) -> Self {
+//         Self {
+//             search_algo: algo,
+//             last_val: 0,
+//         }
+//     }
 
-    pub fn ids<const LIMIT: u8>(
-        &mut self,
-        board: &mut Board,
-        limits: &SearchLimits,
-    ) -> Option<SearchResult> {
-        debug_assert!(
-            if LIMIT == Restrictions::TIME && limits.base_inc.is_none() {
-                false
-            } else {
-                true
-            },
-            "Time Search without base and inc"
-        );
-        debug_assert!(
-            if LIMIT == Restrictions::NODES && limits.max_nodes.is_none() {
-                false
-            } else {
-                true
-            },
-            "Node Search without max_nodes"
-        );
-        debug_assert!(
-            if LIMIT == Restrictions::DEPTH && limits.max_depth.is_none() {
-                false
-            } else {
-                true
-            },
-            "Depth search without depth"
-        );
-        let mut restrictions = Restrictions::new();
+//     pub fn get_history(&self) -> &HistroyT {
+//         self.search_algo.get_history()
+//     }
 
-        let start_time = Instant::now();
-        let (base, inc) = if LIMIT == Restrictions::TIME {
-            limits.base_inc.unwrap()
-        } else {
-            (0, 0)
-        };
-        if LIMIT == Restrictions::NODES {
-            restrictions.max_nodes = limits.max_nodes.unwrap();
-        }
-        let soft_bound = base / 20 + inc / 2;
-        let hard_bound = (0.3 * base as f32 - 300.0)
-            .min(1.5 * soft_bound as f32)
-            .max(50.0);
-        let end = start_time + Duration::from_millis(hard_bound as u64);
-        restrictions.end = end;
-        let soft_bound = Duration::from_millis(soft_bound);
-        let mut nodes_searched = 0;
+//     pub fn get_stack(&self) -> &SearchStack<MAX_SEARCH_DEPTH> {
+//         self.search_algo.get_stack()
+//     }
 
-        let max_depth = if LIMIT == Restrictions::DEPTH {
-            (limits.max_depth.unwrap() + 1).min(MAX_SEARCH_DEPTH as u8)
-        } else {
-            MAX_SEARCH_DEPTH as u8
-        };
+//     pub fn get_hash_m(&self, board: &Board) -> Move {
+//         self.search_algo.get_hash_move(board)
+//     }
 
-        let mut best_res: Option<SearchResult> = None;
+//     pub fn reset(&mut self) {
+//         self.last_val = 0;
+//         self.search_algo.clear();
+//     }
 
-        for current_depth in 1..max_depth {
-            if LIMIT == Restrictions::TIME && start_time.elapsed() > soft_bound {
-                break;
-            }
+//     pub fn change_hash(&mut self, mb: usize) {
+//         self.search_algo.change_hash_size(mb);
+//     }
 
-            if let Some(result) = self.search_algo.negamax::<{ LIMIT }>(
-                board,
-                current_depth as u8,
-                restrictions,
-                FIRST_WINDOW(),
-                FIRST_WINDOW(),
-                self.last_val,
-            ) {
-                nodes_searched += result.nodes_searched;
-                restrictions.max_nodes =
-                    restrictions.max_nodes.saturating_sub(result.nodes_searched);
-                if result.best_move != NULL_MOVE {
-                    best_res = Some(result);
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-        self.last_val = best_res.as_mut().map_or(0, |res| res.evaluation);
-        if let Some(best_res) = best_res.as_mut() {
-            best_res.nodes_searched = nodes_searched
-        }
-        best_res
-    }
+//     pub fn ids<const LIMIT: u8>(&mut self, board: &mut Board) -> Option<SearchResult> {
+//         let mut best_res: Option<SearchResult> = None;
+//         let mut nodes_searched = 0;
+//         for current_depth in 1..MAX_SEARCH_DEPTH {
+//             if let Some(result) = self.search_algo.negamax::<{ LIMIT }>(
+//                 board,
+//                 current_depth as u8,
+//                 FIRST_WINDOW(),
+//                 FIRST_WINDOW(),
+//                 self.last_val,
+//             ) {
+//                 nodes_searched += result.nodes_searched;
 
-    pub fn search(&mut self, board: &mut Board, limits: &SearchLimits) -> Option<SearchResult> {
-        self.search_algo.new_search_turn();
+//                 if result.best_move != NULL_MOVE {
+//                     best_res = Some(result);
+//                 } else {
+//                     break;
+//                 }
+//             } else {
+//                 break;
+//             }
+//         }
+//         self.last_val = best_res.as_mut().map_or(0, |res| res.evaluation);
+//         if let Some(best_res) = best_res.as_mut() {
+//             best_res.nodes_searched = nodes_searched
+//         }
+//         best_res
+//     }
 
-        if limits.max_depth.is_some() {
-            return self.ids::<{ Restrictions::DEPTH }>(board, limits);
-        } else if limits.max_nodes.is_some() {
-            return self.ids::<{ Restrictions::NODES }>(board, limits);
-        } else if limits.base_inc.is_some() {
-            return self.ids::<{ Restrictions::TIME }>(board, limits);
-        }
-        None
-    }
-}
+//     pub fn ponder_prediction(&self, initial: Move, board: &mut Board) -> Option<Move> {
+//         board.make_pl_move::<true>(initial);
+//         let hash = self.get_hash_m(board);
+//         let prediction =
+//             AdvancedSorting::new(hash).next(board, self.get_history(), self.get_stack());
+//         board.unmake_pl_move(initial);
+//         prediction
+//     }
+// }

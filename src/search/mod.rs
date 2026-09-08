@@ -1,12 +1,30 @@
 pub mod ids;
 pub mod simple_search;
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
 use crate::chess::chess_move::Move;
 use crate::chess::chess_move::NULL_MOVE;
 
 pub const MAX_SEARCH_DEPTH: usize = 64;
 pub const GLOBAL_MAX_SEARCH_DURATION: u64 = 100000000u64;
 pub const GLOBAL_MAX_SEARCH_NODES: u64 = 100_000_000_000u64;
+
+pub trait Millis {
+    fn now_millis() -> u128 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    }
+}
+
+impl Millis for SystemTime {}
 
 #[cfg(test)]
 use crate::search::Ntype::Exact;
@@ -52,6 +70,89 @@ impl SearchResult {
             self.nodes_searched,
             self.best_move.to_string(),
         );
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct Restrictions {
+    pub max_nodes: u64,
+    pub soft_bound: u128,
+    pub hard_bound: u128,
+    pub depth: u8,
+}
+
+impl Restrictions {
+    pub const NODES: u8 = 1 << 0;
+    pub const TIME: u8 = 1 << 1;
+    pub const DEPTH: u8 = 1 << 2;
+
+    pub fn new() -> Self {
+        Self {
+            max_nodes: GLOBAL_MAX_SEARCH_NODES,
+            soft_bound: 0,
+            hard_bound: 0,
+            depth: 0,
+        }
+    }
+
+    pub fn depth(d: u8) -> Self {
+        Self {
+            depth: d,
+            ..Restrictions::default()
+        }
+    }
+
+    pub fn time(soft_bound: u128, hard_bound: u128) -> Self {
+        Self {
+            soft_bound: soft_bound,
+            hard_bound: hard_bound,
+            ..Restrictions::default()
+        }
+    }
+
+    pub fn nodes(nodes: u64) -> Self {
+        Self {
+            max_nodes: nodes,
+            ..Restrictions::default()
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct SearchControl {
+    stop_search: Arc<AtomicBool>,
+    ponder: Arc<AtomicBool>,
+}
+
+impl SearchControl {
+    pub fn new() -> Self {
+        Self {
+            stop_search: Arc::new(AtomicBool::new(false)),
+            ponder: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.stop_pondering();
+        self.allow_search();
+    }
+
+    pub fn allow_search(&mut self) {
+        self.stop_search.store(false, Ordering::Relaxed);
+        self.stop_pondering();
+    }
+
+    pub fn stop_search(&mut self) {
+        self.stop_search.store(true, Ordering::Relaxed);
+        self.stop_pondering();
+    }
+
+    pub fn stop_pondering(&mut self) {
+        self.ponder.store(false, Ordering::Relaxed);
+    }
+
+    pub fn start_pondering(&mut self) {
+        self.ponder.store(true, Ordering::Relaxed);
     }
 }
 

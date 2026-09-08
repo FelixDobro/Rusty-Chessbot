@@ -1,87 +1,18 @@
 use std::i16;
-use std::time::Instant;
+use std::sync::atomic::Ordering;
+use std::time::SystemTime;
 
 use crate::chess::board::Board;
 use crate::chess::board::evaluation::{CHECK_MATE_THRESHOLD, NEG_INFINITY, POSITIVE_INFINITY};
 use crate::chess::chess_move::{MOVE_GEN_SIZE, Move, MoveList, NULL_MOVE};
 use crate::chess::constants::{Color, NUM_PIECES, Piece};
-use crate::move_sorting::advanced_sorting::{AdvancedSorting, NumericSorting};
+use crate::move_sorting::advanced_sorting::AdvancedSorting;
 use crate::parameters::*;
 use crate::search::Ntype::Exact;
-use crate::search::ids::Restrictions;
-use crate::search::{MAX_SEARCH_DEPTH, Ntype, SearchResult, TTable, TTableEntry};
 
-#[allow(dead_code)]
-pub struct Negamax {
-    nodes_searched: u64,
-}
-
-#[allow(dead_code)]
-impl Negamax {
-    pub fn new() -> Self {
-        return Self { nodes_searched: 0 };
-    }
-
-    pub fn negamax(&mut self, board: &mut Board, depth: u8) -> Option<SearchResult> {
-        self.nodes_searched = 0;
-        let mut best_val = NEG_INFINITY;
-        let mut alpha = NEG_INFINITY;
-        let mut best_move = None;
-
-        for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
-            if board.make_pl_move::<true>(m) {
-                let value = -self.negamax_p(board, depth - 1, NEG_INFINITY, -alpha);
-                board.unmake_pl_move(m);
-                if value > best_val {
-                    best_move = Some(m);
-                    best_val = value;
-                    alpha = best_val;
-                }
-            }
-        }
-        if let Some(m) = best_move {
-            return Some(SearchResult {
-                best_move: m,
-                evaluation: best_val,
-                nodes_searched: self.nodes_searched,
-                depth: depth,
-            });
-        }
-        None
-    }
-
-    fn negamax_p(&mut self, board: &mut Board, depth: u8, mut alpha: i16, beta: i16) -> i16 {
-        self.nodes_searched += 1;
-
-        if depth == 0 {
-            return board.eval();
-        }
-        if board.can_claim_draw() {
-            return 0;
-        }
-
-        let mut num_moves_found = 0;
-        for &m in NumericSorting::move_iter(&mut board.generate_pseudolegals()) {
-            if board.make_pl_move::<true>(m) {
-                num_moves_found += 1;
-                let new_eval = -self.negamax_p(board, depth - 1, -beta, -alpha);
-                board.unmake_pl_move(m);
-                if new_eval >= beta {
-                    return beta;
-                }
-                if new_eval > alpha {
-                    alpha = new_eval;
-                }
-            }
-        }
-        if num_moves_found == 0 {
-            let res = board.result(board.in_check());
-            return res;
-        }
-
-        alpha
-    }
-}
+use crate::search::{
+    MAX_SEARCH_DEPTH, Millis, Ntype, Restrictions, SearchControl, SearchResult, TTable, TTableEntry,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct StackItem {
@@ -339,34 +270,42 @@ struct SearchInfo {
     search_stack: SearchStack<MAX_SEARCH_DEPTH>,
     history_tables: HistroyT,
     restricitons: Restrictions,
+    control: SearchControl,
     age: u8,
+    last_val: i16,
     nodes_searched: u64,
     timed_nodes: u64,
     abort: bool,
+    start_time: Option<u128>,
 }
 
 impl SearchInfo {
-    pub fn new() -> Self {
+    pub fn new(control: SearchControl) -> Self {
         SearchInfo {
             age: 0,
+            last_val: 0,
             nodes_searched: 0,
             timed_nodes: 0,
             abort: false,
             search_stack: SearchStack::new(),
             history_tables: HistroyT::new(),
             restricitons: Restrictions::new(),
+            start_time: None,
+            control: control,
         }
     }
-
+    pub fn set_restrictions(&mut self, restrictions: Restrictions) {
+        self.restricitons = restrictions;
+    }
     pub fn clear_tables(&mut self) {
         self.history_tables = HistroyT::new();
     }
 
-    pub fn reset(&mut self, restricitons: Restrictions) {
+    pub fn reset(&mut self) {
         self.nodes_searched = 1;
         self.timed_nodes = 1;
         self.abort = false;
-        self.restricitons = restricitons;
+        self.start_time = None;
         self.search_stack = SearchStack::new();
     }
 
@@ -393,16 +332,6 @@ impl SearchInfo {
     pub fn decrement_nodes(&mut self) {
         self.timed_nodes = self.timed_nodes.saturating_sub(1);
         self.nodes_searched = self.nodes_searched.saturating_sub(1);
-    }
-
-    #[inline(always)]
-    pub fn increase_age(&mut self) {
-        self.age = self.age.wrapping_add(1);
-    }
-
-    #[inline(always)]
-    pub fn abort(&mut self) {
-        self.abort = true
     }
 
     #[inline(always)]
@@ -458,16 +387,16 @@ impl SearchInfo {
     }
 }
 
-pub struct NegamaxTT {
+pub struct Search {
     ttable: TTable,
     info: SearchInfo,
     LMR: Box<[[u8; MOVE_GEN_SIZE]; MAX_SEARCH_DEPTH]>,
 }
 
-impl NegamaxTT {
+impl Search {
     const CHECK_TIME_NODES: u64 = 25_000;
 
-    pub fn new(ttsize: usize) -> Self {
+    pub fn new(ttsize: usize, control: SearchControl) -> Self {
         let reductions: Box<[[u8; MOVE_GEN_SIZE]; MAX_SEARCH_DEPTH]> = Box::new({
             let mut table = [[0u8; MOVE_GEN_SIZE]; MAX_SEARCH_DEPTH];
             let mut d = 0;
@@ -487,253 +416,84 @@ impl NegamaxTT {
 
         Self {
             ttable: TTable::new(ttsize),
-            info: SearchInfo::new(),
+            info: SearchInfo::new(control),
             LMR: reductions,
         }
     }
 
-    pub fn clear(&mut self) {
-        self.ttable.clear();
-        self.info.clear_tables();
-    }
-
-    pub fn change_hash_size(&mut self, size: usize) {
-        self.ttable = TTable::new(size)
-    }
-
-    pub fn new_search_turn(&mut self) {
-        self.info.increase_age();
-    }
-
-    #[inline(always)]
-    pub fn get_new_window(window: i16) -> i16 {
-        if window == FIRST_WINDOW() {
-            SECOND_WINDOW()
-        } else {
-            POSITIVE_INFINITY
-        }
-    }
-
-    #[inline(always)]
-    pub fn get_LMR_reduction(&self, depth: u8, move_count: usize) -> u8 {
-        self.LMR[depth as usize][move_count]
-    }
-
-    #[inline(always)]
-    pub fn get_hash_move(&self, board: &Board) -> Move {
-        self.ttable
-            .get(board.get_hash())
-            .map_or(NULL_MOVE, |entry| entry.best_move)
-    }
-
-    #[inline(always)]
-    fn table_value(
-        entry: &TTableEntry,
-        alpha: i16,
-        beta: i16,
-        depth: u8,
-        is_pv: bool,
-    ) -> Option<i16> {
-        if !is_pv && entry.depth >= depth {
-            return match entry.ntype {
-                Ntype::Exact => Some(entry.score),
-                Ntype::Lower if beta <= entry.score => Some(entry.score),
-                Ntype::Upper if alpha >= entry.score => Some(entry.score),
-                _ => None,
-            };
-        }
-        None
-    }
-
-    #[inline(always)]
-    fn nullmove_depth_possible(depth: u8) -> bool {
-        if depth <= depth / 3 + 3 {
-            return false;
-        }
-        true
-    }
-
-    #[inline(always)]
-    fn rfp_margin(depth: u8) -> i16 {
-        let depth = depth as i16;
-        let margin = RFP_BIAS()
-            .saturating_add(depth.saturating_mul(RFP_LINEAR()))
-            .saturating_add(depth.saturating_mul(RFP_QUADRATIC()));
-        margin
-    }
-
-    #[inline(always)]
-    fn prob_margin(depth: u8) -> i16 {
-        let depth = depth as i16;
-        let margin = PROB_BIAS()
-            .saturating_add(PROB_LINEAR().saturating_mul(depth))
-            .saturating_add(PROB_QUADRATIC().saturating_mul(depth * depth));
-        margin
-    }
-
-    #[inline(always)]
-    fn razoring_margin(depth: u8) -> i16 {
-        let depth = depth as i16;
-        let margin = RAZORING_BIAS()
-            .saturating_add(RAZORING_LINEAR().saturating_mul(depth))
-            .saturating_add(RAZORING_QUADRATIC().saturating_mul(depth * depth));
-        margin
-    }
-
-    #[inline(always)]
-    fn futility_margin(depth: u8) -> i16 {
-        let depth = depth as i16;
-        let margin = FUTILITY_BIAS()
-            .saturating_add(FUTILITY_LINEAR().saturating_mul(depth))
-            .saturating_add(FUTILITY_QUADRATIC().saturating_mul(depth * depth));
-        margin
-    }
-
-    #[inline(always)]
-    fn delta_cutoff(stand_pat: i16, alpha: i16, m: Move, board: &Board) -> bool {
-        let p_val = board.piece_eval(board.get_captured(m));
-        !m.is_promo() && stand_pat + p_val + DELTA_MARGIN() < alpha
-    }
-
-    #[inline(always)]
-    fn capture_extension(&self, pv: bool, is_capture: bool, board: &Board) -> u8 {
-        if is_capture && pv {
-            if let Some((played, before)) = self.info.search_stack.last_two() {
-                if played.m.to() == before.m.to() {
-                    if self.info.history_tables.capture_val(
-                        played.moved_piece,
-                        played.m,
-                        board.get_last_captured(),
-                    ) > CAPTURE_HISTORY_EXTENSION_THRESHOLD()
-                    {
-                        return 1;
-                    }
-                }
-            }
-        }
-
-        0
-    }
-
-    #[inline(always)]
-    fn see_pruning(
-        is_pv: bool,
-        in_check: bool,
-        depth: u8,
-        board: &Board,
-        m: Move,
-        tt_move: Move,
-        num_moves_played: usize,
-    ) -> bool {
-        let depth = depth as i32;
-
-        if is_pv || in_check || num_moves_played == 0 || m == tt_move || m.is_promo() {
-            return false;
-        }
-        let see = AdvancedSorting::static_e_e(board, m);
-        if m.is_quiet() {
-            if see
-                < (-1i32)
-                    .saturating_mul(SEE_QUIET())
-                    .saturating_mul(depth * depth)
+    pub fn soft_reached<const LIMIT: u8>(&mut self) -> bool {
+        if self.info.control.stop_search.load(Ordering::Relaxed) {
             {
+                self.info.abort = true;
                 return true;
             }
-        } else {
-            if see < (-1i32).saturating_mul(SEE_CAPTURE()).saturating_mul(depth) {
-                return true;
-            }
+        }
+
+        if LIMIT == Restrictions::TIME
+            && let Some(start) = self.info.start_time
+        {
+            return SystemTime::now_millis() - start > self.info.restricitons.soft_bound;
         }
         false
     }
 
-    pub fn quiesence_search<const LIMITS: u8>(
+    pub fn ids<const LIMIT: u8>(
         &mut self,
         board: &mut Board,
-        mut alpha: i16,
-        beta: i16,
-    ) -> i16 {
-        if LIMITS == Restrictions::TIME && self.info.timed_nodes > Self::CHECK_TIME_NODES {
-            if Instant::now() > self.info.restricitons.end {
-                self.info.abort();
-                return 0;
-            }
-            self.info.reset_timed_nodes();
-        }
+        restrictions: Restrictions,
+    ) -> Option<SearchResult> {
+        let max_depth = if LIMIT == Restrictions::DEPTH {
+            (restrictions.depth as usize + 1).min(MAX_SEARCH_DEPTH)
+        } else {
+            MAX_SEARCH_DEPTH
+        };
 
-        if LIMITS == Restrictions::NODES
-            && self.info.nodes_searched >= self.info.restricitons.max_nodes
-        {
-            self.info.abort();
-            return 0;
-        }
-        self.info.increment_nodes();
-        if board.position_will_draw() {
-            return 0;
-        }
+        self.info.set_restrictions(restrictions);
+        self.info.reset();
 
-        let mut tt_move = NULL_MOVE;
-        if let Some(entry) = self.ttable.get(board.get_hash()) {
-            if let Some(val) = Self::table_value(entry, alpha, beta, 0, false) {
-                return val;
-            }
-
-            tt_move = entry.best_move;
-        }
-
-        let stand_pat = board.eval();
-        let mut big_margin = board.piece_eval(Piece::Queen);
-        if board.can_promo() {
-            big_margin += 775
-        }
-
-        if stand_pat.saturating_add(big_margin) < alpha {
-            return alpha;
-        }
-        if stand_pat >= beta {
-            return beta;
-        }
-        if alpha < stand_pat {
-            alpha = stand_pat;
-        }
-
-        let mut captures =
-            AdvancedSorting::sort_only_captures(board, tt_move, &self.info.history_tables);
-        while let Some((m, m_eval)) = captures.selection_sort_next() {
-            if m_eval.is_negative() {
+        let mut best_res: Option<SearchResult> = None;
+        for current_depth in 1..max_depth {
+            if self.soft_reached::<LIMIT>() {
                 break;
             }
-            if Self::delta_cutoff(stand_pat, alpha, m, board) {
-                continue;
-            }
-            if board.make_pl_move::<true>(m) {
-                let score = -self.quiesence_search::<LIMITS>(board, -beta, -alpha);
-                board.unmake_pl_move(m);
-                if score >= beta {
-                    return beta;
-                }
-                if self.info.abort {
-                    return 0;
-                }
-                if score > alpha {
-                    alpha = score
-                }
+            if let Some(result) = self.root_negamax::<{ LIMIT }>(
+                board,
+                current_depth as u8,
+                FIRST_WINDOW(),
+                FIRST_WINDOW(),
+                self.last_val(),
+            ) {
+                best_res = Some(result);
+                self.set_last_val(&best_res);
+            } else {
+                break;
             }
         }
-
-        alpha
+        self.set_last_val(&best_res);
+        self.increase_age();
+        best_res
     }
 
-    pub fn negamax<const LIMITS: u8>(
+    #[inline(always)]
+    fn set_last_val(&mut self, res: &Option<SearchResult>) {
+        if let Some(res) = res {
+            self.info.last_val = res.evaluation
+        }
+    }
+
+    #[inline(always)]
+    fn last_val(&self) -> i16 {
+        self.info.last_val
+    }
+
+    pub fn root_negamax<const LIMITS: u8>(
         &mut self,
         board: &mut Board,
         depth: u8,
-        restrcitions: Restrictions,
         alpha_dec: i16,
         beta_inc: i16,
         last_val: i16,
     ) -> Option<SearchResult> {
-        self.info.reset(restrcitions);
         let ply = 0;
 
         let original_alpha = last_val.saturating_sub(alpha_dec).max(NEG_INFINITY);
@@ -807,12 +567,7 @@ impl NegamaxTT {
                 self.info.pop();
 
                 if self.info.abort {
-                    return Some(SearchResult {
-                        nodes_searched: self.info.nodes_searched,
-                        best_move: NULL_MOVE,
-                        evaluation: 0,
-                        depth: 0,
-                    });
+                    return None;
                 }
 
                 if value > alpha {
@@ -845,43 +600,25 @@ impl NegamaxTT {
         */
 
         if alpha <= original_alpha && alpha_dec < POSITIVE_INFINITY {
-            let outer_nodes = self.info.nodes_searched;
-            self.info.restricitons.max_nodes = self
-                .info
-                .restricitons
-                .max_nodes
-                .saturating_sub(self.info.nodes_searched);
-            let mut res = self.negamax::<LIMITS>(
+            let res = self.root_negamax::<LIMITS>(
                 board,
                 depth,
-                self.info.restricitons,
                 Self::get_new_window(alpha_dec),
                 beta_inc,
                 last_val,
             );
-            if let Some(r) = res.as_mut() {
-                r.nodes_searched += outer_nodes;
-            }
+
             return res;
         }
         if alpha >= original_beta && beta_inc < POSITIVE_INFINITY {
-            let outer_nodes = self.info.nodes_searched;
-            self.info.restricitons.max_nodes = self
-                .info
-                .restricitons
-                .max_nodes
-                .saturating_sub(self.info.nodes_searched);
-            let mut res = self.negamax::<LIMITS>(
+            let res = self.root_negamax::<LIMITS>(
                 board,
                 depth,
-                self.info.restricitons,
                 alpha_dec,
                 Self::get_new_window(beta_inc),
                 last_val,
             );
-            if let Some(r) = res.as_mut() {
-                r.nodes_searched += outer_nodes;
-            }
+
             return res;
         }
 
@@ -933,6 +670,72 @@ impl NegamaxTT {
         None
     }
 
+    pub fn quiesence_search<const LIMITS: u8>(
+        &mut self,
+        board: &mut Board,
+        mut alpha: i16,
+        beta: i16,
+    ) -> i16 {
+        if self.check_limits::<LIMITS>() {
+            return 0;
+        }
+        self.info.increment_nodes();
+        if board.position_will_draw() {
+            return 0;
+        }
+
+        let mut tt_move = NULL_MOVE;
+        if let Some(entry) = self.ttable.get(board.get_hash()) {
+            if let Some(val) = Self::table_value(entry, alpha, beta, 0, false) {
+                return val;
+            }
+
+            tt_move = entry.best_move;
+        }
+
+        let stand_pat = board.eval();
+        let mut big_margin = board.piece_eval(Piece::Queen);
+        if board.can_promo() {
+            big_margin += 775
+        }
+
+        if stand_pat.saturating_add(big_margin) < alpha {
+            return alpha;
+        }
+        if stand_pat >= beta {
+            return beta;
+        }
+        if alpha < stand_pat {
+            alpha = stand_pat;
+        }
+
+        let mut captures =
+            AdvancedSorting::sort_only_captures(board, tt_move, &self.info.history_tables);
+        while let Some((m, m_eval)) = captures.selection_sort_next() {
+            if m_eval.is_negative() {
+                break;
+            }
+            if Self::delta_cutoff(stand_pat, alpha, m, board) {
+                continue;
+            }
+            if board.make_pl_move::<true>(m) {
+                let score = -self.quiesence_search::<LIMITS>(board, -beta, -alpha);
+                board.unmake_pl_move(m);
+                if score >= beta {
+                    return beta;
+                }
+                if self.info.abort {
+                    return 0;
+                }
+                if score > alpha {
+                    alpha = score
+                }
+            }
+        }
+
+        alpha
+    }
+
     fn negamax_p<const LIMITS: u8>(
         &mut self,
         board: &mut Board,
@@ -943,18 +746,7 @@ impl NegamaxTT {
         made_nullmove: bool,
         in_check: bool,
     ) -> i16 {
-        if LIMITS == Restrictions::TIME && self.info.timed_nodes > Self::CHECK_TIME_NODES {
-            if Instant::now() > self.info.restricitons.end {
-                self.info.abort();
-                return 0;
-            }
-            self.info.reset_timed_nodes();
-        }
-
-        if LIMITS == Restrictions::NODES
-            && self.info.nodes_searched >= self.info.restricitons.max_nodes
-        {
-            self.info.abort();
+        if self.check_limits::<LIMITS>() {
             return 0;
         }
         self.info.increment_nodes();
@@ -1247,5 +1039,231 @@ impl NegamaxTT {
             age: self.info.age,
         });
         alpha
+    }
+
+    pub fn get_history(&self) -> &HistroyT {
+        &self.info.history_tables
+    }
+
+    pub fn get_stack(&self) -> &SearchStack<MAX_SEARCH_DEPTH> {
+        &self.info.search_stack
+    }
+
+    pub fn reset(&mut self) {
+        self.ttable.clear();
+        self.info.reset();
+        self.info.clear_tables();
+    }
+
+    #[inline(always)]
+    pub fn increase_age(&mut self) {
+        self.info.age = self.info.age.wrapping_add(1);
+    }
+
+    pub fn change_hash_size(&mut self, size: usize) {
+        self.ttable = TTable::new(size)
+    }
+
+    #[inline(always)]
+    pub fn get_new_window(window: i16) -> i16 {
+        if window == FIRST_WINDOW() {
+            SECOND_WINDOW()
+        } else {
+            POSITIVE_INFINITY
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_LMR_reduction(&self, depth: u8, move_count: usize) -> u8 {
+        self.LMR[depth as usize][move_count]
+    }
+
+    #[inline(always)]
+    pub fn get_hash_move(&self, board: &Board) -> Move {
+        self.ttable
+            .get(board.get_hash())
+            .map_or(NULL_MOVE, |entry| entry.best_move)
+    }
+
+    #[inline(always)]
+    fn table_value(
+        entry: &TTableEntry,
+        alpha: i16,
+        beta: i16,
+        depth: u8,
+        is_pv: bool,
+    ) -> Option<i16> {
+        if !is_pv && entry.depth >= depth {
+            return match entry.ntype {
+                Ntype::Exact => Some(entry.score),
+                Ntype::Lower if beta <= entry.score => Some(entry.score),
+                Ntype::Upper if alpha >= entry.score => Some(entry.score),
+                _ => None,
+            };
+        }
+        None
+    }
+
+    #[inline(always)]
+    fn nullmove_depth_possible(depth: u8) -> bool {
+        if depth <= depth / 3 + 3 {
+            return false;
+        }
+        true
+    }
+
+    #[inline(always)]
+    fn rfp_margin(depth: u8) -> i16 {
+        let depth = depth as i16;
+        let margin = RFP_BIAS()
+            .saturating_add(depth.saturating_mul(RFP_LINEAR()))
+            .saturating_add(depth.saturating_mul(RFP_QUADRATIC()));
+        margin
+    }
+
+    #[inline(always)]
+    fn prob_margin(depth: u8) -> i16 {
+        let depth = depth as i16;
+        let margin = PROB_BIAS()
+            .saturating_add(PROB_LINEAR().saturating_mul(depth))
+            .saturating_add(PROB_QUADRATIC().saturating_mul(depth * depth));
+        margin
+    }
+
+    #[inline(always)]
+    fn razoring_margin(depth: u8) -> i16 {
+        let depth = depth as i16;
+        let margin = RAZORING_BIAS()
+            .saturating_add(RAZORING_LINEAR().saturating_mul(depth))
+            .saturating_add(RAZORING_QUADRATIC().saturating_mul(depth * depth));
+        margin
+    }
+
+    #[inline(always)]
+    fn futility_margin(depth: u8) -> i16 {
+        let depth = depth as i16;
+        let margin = FUTILITY_BIAS()
+            .saturating_add(FUTILITY_LINEAR().saturating_mul(depth))
+            .saturating_add(FUTILITY_QUADRATIC().saturating_mul(depth * depth));
+        margin
+    }
+
+    #[inline(always)]
+    fn delta_cutoff(stand_pat: i16, alpha: i16, m: Move, board: &Board) -> bool {
+        let p_val = board.piece_eval(board.get_captured(m));
+        !m.is_promo() && stand_pat + p_val + DELTA_MARGIN() < alpha
+    }
+
+    #[inline(always)]
+    fn capture_extension(&self, pv: bool, is_capture: bool, board: &Board) -> u8 {
+        if is_capture && pv {
+            if let Some((played, before)) = self.info.search_stack.last_two() {
+                if played.m.to() == before.m.to() {
+                    if self.info.history_tables.capture_val(
+                        played.moved_piece,
+                        played.m,
+                        board.get_last_captured(),
+                    ) > CAPTURE_HISTORY_EXTENSION_THRESHOLD()
+                    {
+                        return 1;
+                    }
+                }
+            }
+        }
+
+        0
+    }
+
+    #[inline(always)]
+    fn see_pruning(
+        is_pv: bool,
+        in_check: bool,
+        depth: u8,
+        board: &Board,
+        m: Move,
+        tt_move: Move,
+        num_moves_played: usize,
+    ) -> bool {
+        let depth = depth as i32;
+
+        if is_pv || in_check || num_moves_played == 0 || m == tt_move || m.is_promo() {
+            return false;
+        }
+        let see = AdvancedSorting::static_e_e(board, m);
+        if m.is_quiet() {
+            if see
+                < (-1i32)
+                    .saturating_mul(SEE_QUIET())
+                    .saturating_mul(depth * depth)
+            {
+                return true;
+            }
+        } else {
+            if see < (-1i32).saturating_mul(SEE_CAPTURE()).saturating_mul(depth) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn check_limits<const LIMITS: u8>(&mut self) -> bool {
+        let info = &mut self.info;
+        if info.timed_nodes > Self::CHECK_TIME_NODES {
+            if info.control.stop_search.load(Ordering::Relaxed) {
+                return true;
+            }
+
+            if info.control.ponder.load(Ordering::Relaxed) {
+                return false;
+            }
+
+            let start_time = *info
+                .start_time
+                .get_or_insert_with(|| SystemTime::now_millis());
+
+            if LIMITS == Restrictions::TIME {
+                if SystemTime::now_millis() - start_time > info.restricitons.hard_bound {
+                    self.info.abort = true;
+                }
+            }
+
+            if LIMITS == Restrictions::NODES
+                && self.info.nodes_searched >= self.info.restricitons.max_nodes
+            {
+                self.info.abort = true;
+            }
+            self.info.reset_timed_nodes();
+        }
+
+        self.info.abort
+    }
+
+    pub fn ponder_prediction(&self, initial: Move, board: &mut Board) -> Option<Move> {
+        if board.make_pl_move::<true>(initial) {
+            let hash = self.get_hash_move(board);
+            let mut sorter = AdvancedSorting::new(hash);
+            while let Some(prediction) = sorter.next(board, self.get_history(), self.get_stack()) {
+                if board.make_pl_move::<true>(prediction) {
+                    board.unmake_pl_move(prediction);
+                    board.unmake_pl_move(initial);
+                    return Some(prediction);
+                }
+            }
+
+            board.unmake_pl_move(initial);
+        }
+        None
+    }
+
+    pub fn allow_search(&mut self) {
+        self.info.control.allow_search();
+    }
+
+    pub fn start_ponder(&mut self) {
+        self.info.control.start_pondering();
+    }
+
+    pub fn stop_ponder(&mut self) {
+        self.info.control.start_pondering();
     }
 }

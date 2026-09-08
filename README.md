@@ -4,7 +4,7 @@
 
 
 
-A high-performance chess engine written in Rust. The current estimated playing strength is around **2200 Elo** in Blitz and Bullet. 
+A high-performance chess engine written in Rust. The current estimated playing strength is around **2350 Elo** in Blitz and Bullet. 
 
 You can watch it play or challenge the bot directly on Lichess here: 
 ⚔️ **[Challenge Rusty on Lichess](https://lichess.org/?variant=standard&minutesPerSide=3.0&gameMode=casual&increment=2&user=arustychessbot#friend)**
