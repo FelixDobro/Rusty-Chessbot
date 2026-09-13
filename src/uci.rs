@@ -1,5 +1,3 @@
-use chess_bot::search::Millis;
-
 use crate::parameters::{ENGINE_SETTINGS, print_engine_parameters};
 use crate::search::{Restrictions, SearchControl, SearchLimits, SearchResult};
 

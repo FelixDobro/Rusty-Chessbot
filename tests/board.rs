@@ -1,6 +1,25 @@
-use chess_bot::chess::square::Square;
-use chess_bot::chess::{chess_move::Move};
+mod common;
+
 use chess_bot::chess::board::Board;
+use chess_bot::chess::chess_move::Move;
+use chess_bot::chess::square::Square;
+use common::TEST_DATA;
+
+#[test]
+fn fen_test() {
+    TEST_DATA.iter().for_each(|test| {
+        let fen = &test.fen;
+        let b = Board::from_fen(fen).unwrap();
+        let res = &b.to_fen();
+        assert_eq!(
+            res, fen,
+            "Board converts og fen: {} into wrong fen: {}",
+            fen, res
+        );
+
+        println!("test_hash_vs_calculated_{} ... ok", test.name);
+    });
+}
 
 #[test]
 fn qualify_moves_1() {
@@ -117,15 +136,18 @@ fn qualify_moves_1() {
     let res19 = board.qualify_move("c7b8n");
     assert!(res19.is_ok(), "Move c7b8n failed to qualify");
     let m19 = res19.unwrap();
-    assert_eq!(m19, Move::new(Square::C7, Square::B8, Move::PROMO_CAP_KNIGHT));
+    assert_eq!(
+        m19,
+        Move::new(Square::C7, Square::B8, Move::PROMO_CAP_KNIGHT)
+    );
     board.make_pl_move::<false>(m19);
 }
 
-
-
 #[test]
 fn qualify_moves_2() {
-    let mut board = Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
+    let mut board =
+        Board::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
+            .unwrap();
 
     let res1 = board.qualify_move("d5d6");
     assert!(res1.is_ok(), "Move d5d6 failed to qualify");
@@ -163,6 +185,4 @@ fn qualify_moves_2() {
     let m6 = res6.unwrap();
     assert_eq!(m6, Move::new(Square::B2, Square::B1, Move::PROMO_BISHOP));
     board.make_pl_move::<false>(m6);
-
-
 }

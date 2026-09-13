@@ -6,6 +6,8 @@ pub const NUM_PIECES: usize = 6;
 pub const NUM_COLORS: usize = 2;
 
 pub const SYMBOLS: [char; 12] = ['♟', '♞', '♝', '♜', '♛', '♚', '♙', '♘', '♗', '♖', '♕', '♔'];
+pub const FEN_PIECES: [char; 12] = ['P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k'];
+pub const FEN_COLOR: [char; 2] = ['w', 'b'];
 
 #[repr(u8)]
 pub enum CastlingRights {

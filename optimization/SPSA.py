@@ -11,7 +11,6 @@ from chess.engine import SimpleEngine
 from tqdm import tqdm
 
 
-
 CONCURRENCY = 12
 HASH_SIZE = 100    # Warning: 12 * 2 * HASH_SIZE is the number of mb used for training
 ENGINE_CMD = "./engines/unoptimized"

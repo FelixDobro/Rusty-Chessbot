@@ -23,6 +23,24 @@ use crate::chess::constants::{BlackSide, CastlingRights, Color, Piece, Side, Whi
 pub const GAME_POSITIONS_SIZE: usize = 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameResult {
+    WhiteWin,
+    BlackWin,
+    Draw,
+}
+
+impl GameResult {
+    pub fn to_string(&self) -> String {
+        let res = match self {
+            Self::WhiteWin => "WhiteWin",
+            Self::BlackWin => "BlackWin",
+            Self::Draw => "Draw",
+        };
+        res.to_string()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UndoInfo {
     pub castling_rights: u8,
     pub en_passant_square: Bitboard,
@@ -163,6 +181,7 @@ impl Board {
             game_phase: 0,
         };
         board.hash = board.calculate_hash();
+        board.positions.push(board.hash);
         board.game_phase = board.calc_phase();
         board.eval_mg = board.calculate_mg();
         board.eval_eg = board.calculate_eg();
@@ -297,10 +316,78 @@ impl Board {
             undo_stack: Box::new(UndoStack::new()),
         };
         board.hash = board.calculate_hash();
+        board.positions.push(board.hash);
         board.eval_eg = board.calculate_eg();
         board.eval_mg = board.calculate_mg();
         board.game_phase = board.calc_phase();
         Ok(board)
+    }
+
+    pub fn to_fen(&self) -> String {
+        let mut res = "".to_owned();
+
+        for r in (0..8).rev() {
+            let mut empty = 0;
+            let mut row = "".to_owned();
+            for col in 0..8 {
+                let sq = Square::from_u8(r * 8 + col);
+                let p = self.get_piece(sq);
+                let color = self.get_color(sq);
+                if p != Empty {
+                    if empty == 0 {
+                        row.push_str(&FEN_PIECES[p.index() + color.offset()].to_string());
+                    } else {
+                        row.push_str(&format!(
+                            "{}{}",
+                            empty,
+                            FEN_PIECES[p.index() + color.offset()]
+                        ));
+                    }
+                    empty = 0
+                } else {
+                    empty += 1;
+                }
+            }
+            res.push_str(&row);
+            if empty != 0 {
+                res.push_str(&empty.to_string());
+            }
+            res.push('/');
+        }
+        res.pop();
+        res.push_str(&format!(" {} ", FEN_COLOR[self.turn.index()]));
+        let mut castle = false;
+        if self.castling_rights & CastlingRights::KingCastleWhite.index() > 0 {
+            res.push('K');
+            castle = true;
+        }
+        if self.castling_rights & CastlingRights::QueenCastleWhite.index() > 0 {
+            res.push('Q');
+            castle = true;
+        }
+        if self.castling_rights & CastlingRights::KingCastleBlack.index() > 0 {
+            res.push('k');
+            castle = true;
+        }
+        if self.castling_rights & CastlingRights::QueenCastleBlack.index() > 0 {
+            res.push('q');
+            castle = true;
+        }
+        if !castle {
+            res.push('-');
+        }
+        res.push(' ');
+
+        if self.en_passant != EMPTY_BB {
+            res.push_str(&self.en_passant.lsb().to_string());
+        } else {
+            res.push('-');
+        }
+        res.push(' ');
+        res.push_str(&self.halfmoves.to_string());
+        res.push(' ');
+        res.push_str(&self.fullmove_counter.to_string());
+        res
     }
 
     #[inline(always)]
@@ -803,7 +890,7 @@ impl Board {
     }
 
     pub fn get_color(&self, square: Square) -> Color {
-        if self.piece_bb[0] & (square.to_bitboard()) != EMPTY_BB {
+        if self.color_bb[0] & (square.to_bitboard()) != EMPTY_BB {
             return White;
         } else {
             return Black;
@@ -858,10 +945,51 @@ impl Board {
         num_occurences > 2
     }
 
+    #[inline(always)]
+    pub fn fifty_moves(&self) -> bool {
+        self.halfmoves > 99
+    }
+
+    pub fn threefold(&self) -> bool {
+        let mut num_occurences = 0;
+        let current_hash = self.hash;
+
+        for &hash in self.positions.half_move_iter(self.halfmoves as u64) {
+            if current_hash == hash {
+                num_occurences += 1
+            }
+        }
+        num_occurences > 2
+    }
+
+    pub fn check_mate(&mut self) -> Option<GameResult> {
+        let legals = self.generate_legals();
+
+        if legals.size() == 0 {
+            if !self.in_check() {
+                return Some(GameResult::Draw);
+            }
+            return if self.turn.is_white() {
+                Some(GameResult::BlackWin)
+            } else {
+                Some(GameResult::WhiteWin)
+            };
+        }
+        None
+    }
+
+    pub fn game_result(&mut self) -> Option<GameResult> {
+        if self.fifty_moves() || self.threefold() {
+            return Some(GameResult::Draw);
+        }
+
+        self.check_mate()
+    }
+
     pub fn position_will_draw(&self) -> bool {
         let halfmoves = self.halfmoves as u64;
 
-        if halfmoves > 99 {
+        if self.fifty_moves() {
             return true;
         }
 
@@ -881,8 +1009,8 @@ impl Board {
 #[cfg(test)]
 mod test {
 
-    use crate::chess::board::Board;
     use crate::chess::board::bitboard::{Bitboard, EMPTY};
+    use crate::chess::board::{Board, GameResult};
     use crate::chess::chess_move::Move;
     use crate::chess::constants::WhiteSide;
     use crate::chess::square::Square;
@@ -1316,5 +1444,83 @@ mod test {
         let board =
             Board::from_fen("rnbqkbnr/ppppppP1/8/7p/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1").unwrap();
         assert!(!board.can_promo(), "Black cannot promote")
+    }
+
+    #[test]
+    fn to_fen() {
+        let fen = "rnbqkbnr/ppppp3/8/5pPp/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 1";
+        let mut b = Board::from_fen(fen).unwrap();
+        let produced = b.to_fen();
+        assert_eq!(
+            produced, fen,
+            "Original fen: {}, produced fen: {}",
+            fen, produced
+        );
+        let m = Move::from_string("g5f6", &b).unwrap();
+        b.make_pl_move::<false>(m);
+        assert_eq!(
+            b.to_fen(),
+            "rnbqkbnr/ppppp3/5P2/7p/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+            "Board has wrong fen"
+        );
+    }
+
+    #[test]
+    fn detect_draw_1() {
+        let mut b =
+            Board::from_fen("rnbqkbnr/ppppp3/5P2/7p/8/8/PPPP1PPP/RNBQKBNR b KQkq - 99 1").unwrap();
+        assert!(b.game_result().is_none(), "No ending position");
+        b.make_pl_move_from_string::<false>("h5h4");
+        assert!(
+            b.game_result().is_some_and(|res| res == GameResult::Draw),
+            "Draw by 50 moves"
+        );
+    }
+
+    #[test]
+    fn detect_draw_2() {
+        let mut b =
+            Board::from_fen("rnbqkbnr/ppppp3/5P2/7p/8/8/PPPP1PPP/RNBQKBNR b KQkq - 1 1").unwrap();
+
+        assert!(b.game_result().is_none(), "No ending position");
+        b.make_pl_move_from_string::<false>("g8h6");
+        b.make_pl_move_from_string::<false>("g1f3");
+        assert!(b.game_result().is_none());
+        b.make_pl_move_from_string::<false>("h6g8");
+        b.make_pl_move_from_string::<false>("f3g1");
+        assert!(b.game_result().is_none());
+        b.make_pl_move_from_string::<false>("g8h6");
+        b.make_pl_move_from_string::<false>("g1f3");
+        assert!(b.game_result().is_none());
+        b.make_pl_move_from_string::<false>("h6g8");
+        b.make_pl_move_from_string::<false>("f3g1");
+
+        assert!(b.threefold(), "Threefold repition");
+
+        assert!(
+            b.game_result().is_some_and(|res| res == GameResult::Draw),
+            "Draw by Threefold"
+        );
+    }
+
+    #[test]
+    fn game_res_1() {
+        let mut b =
+            Board::from_fen("r2rkbn1/ppppp1b1/8/7B/8/6P1/PPPP1PPP/RNBQK2R b - - 0 1").unwrap();
+
+        assert!(
+            b.game_result()
+                .is_some_and(|res| res == GameResult::WhiteWin),
+            "Wrong"
+        );
+    }
+
+    #[test]
+    fn stale_mate() {
+        let mut b = Board::from_fen("8/8/8/5B2/8/KR6/PN6/k7 b - - 0 1").unwrap();
+        assert!(
+            b.game_result().is_some_and(|res| res == GameResult::Draw),
+            "Stalemate"
+        );
     }
 }

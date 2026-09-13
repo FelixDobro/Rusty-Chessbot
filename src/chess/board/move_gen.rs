@@ -60,6 +60,20 @@ impl Board {
         }
     }
 
+    pub fn generate_legals(&mut self) -> MoveList<MOVE_GEN_SIZE> {
+        let mut res = MoveList::new();
+        self.generate_pseudolegals()
+            .as_slice()
+            .iter()
+            .for_each(|&m| {
+                if self.make_pl_move::<false>(m) {
+                    res.push(m);
+                    self.unmake_pl_move(m);
+                }
+            });
+        res
+    }
+
     fn gen_moves<S: Side, G: GenType>(&self) -> MoveList<MOVE_GEN_SIZE> {
         let mut move_list = MoveList::new();
         self.pawn_moves::<S, G>(&mut move_list);

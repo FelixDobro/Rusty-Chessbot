@@ -5,6 +5,7 @@
 
 logs/
 
+data/
 results/
 engines/
 *.ipynb
