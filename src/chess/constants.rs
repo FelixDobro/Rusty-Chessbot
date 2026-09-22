@@ -1,3 +1,5 @@
+use crate::chess::constants::Color::{Black, White};
+use crate::chess::constants::Piece::Pawn;
 use crate::chess::square::Square;
 
 use crate::chess::board::bitboard::*;
@@ -147,6 +149,15 @@ impl Piece {
     }
 }
 
+pub const PIECES: [Piece; 6] = [
+    Piece::Pawn,
+    Piece::Knight,
+    Piece::Bishop,
+    Piece::Rook,
+    Piece::Queen,
+    Piece::King,
+];
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Color {
@@ -178,6 +189,7 @@ impl Color {
 }
 
 pub trait Side {
+    const COLOR: Color;
     const INDEX: usize;
     const OFFSET: usize;
     const MULTIPLIER: i16;
@@ -193,10 +205,13 @@ pub trait Side {
     fn pawn_attack_pattern_l(bb: Bitboard) -> Bitboard;
 
     fn pawn_attack_pattern_r(bb: Bitboard) -> Bitboard;
+
+    fn flip(sq: Square) -> Square;
 }
 
 pub struct WhiteSide;
 impl Side for WhiteSide {
+    const COLOR: Color = White;
     const INDEX: usize = 0;
     const OFFSET: usize = 0;
     const MULTIPLIER: i16 = 1;
@@ -218,6 +233,12 @@ impl Side for WhiteSide {
         (bb << 7) & !FILE_H
     }
 
+    // Returns the flipped square if black else the same
+    #[inline(always)]
+    fn flip(sq: Square) -> Square {
+        sq
+    }
+
     #[inline(always)]
     fn pawn_attack_pattern_r(bb: Bitboard) -> Bitboard {
         (bb << 9) & !FILE_A
@@ -226,6 +247,7 @@ impl Side for WhiteSide {
 
 pub struct BlackSide;
 impl Side for BlackSide {
+    const COLOR: Color = Black;
     const INDEX: usize = 1;
     const OFFSET: usize = NUM_PIECES as usize;
     const MULTIPLIER: i16 = -1;
@@ -244,6 +266,11 @@ impl Side for BlackSide {
     #[inline(always)]
     fn pawn_attack_pattern_l(bb: Bitboard) -> Bitboard {
         (bb >> 9) & !FILE_H
+    }
+
+    #[inline(always)]
+    fn flip(sq: Square) -> Square {
+        sq.flip()
     }
 
     #[inline(always)]

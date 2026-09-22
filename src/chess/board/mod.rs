@@ -2,6 +2,7 @@ pub mod bitboard;
 pub mod evaluation;
 pub mod hash;
 pub mod move_gen;
+pub mod nnue;
 
 use bitboard::EMPTY as EMPTY_BB;
 use bitboard::*;
@@ -11,6 +12,7 @@ use std::arch::x86_64::_pext_u64;
 use std::error::Error;
 use std::str;
 
+use crate::chess::board::nnue::{Accumulator, AccumulatorStack};
 use crate::chess::chess_move::Move;
 use crate::chess::square::Square;
 use hash::HashList;
@@ -45,6 +47,7 @@ pub struct UndoInfo {
     pub castling_rights: u8,
     pub en_passant_square: Bitboard,
     pub halfmove_clock: u16,
+    pub fullmoves: u16,
     pub hash: u64,
     pub captured_piece: Piece,
     pub last_mg: i16,
@@ -58,6 +61,7 @@ impl UndoInfo {
             castling_rights: 0,
             en_passant_square: EMPTY_BB,
             halfmove_clock: 0,
+            fullmoves: 0,
             captured_piece: Empty,
             hash: 0,
             last_eg: 0,
@@ -121,8 +125,9 @@ pub struct Board {
     halfmoves: u16,
     fullmove_counter: u16,
 
-    undo_stack: Box<UndoStack>,
+    undo_stack: UndoStack,
     positions: HashList<GAME_POSITIONS_SIZE>,
+    accum_stack: AccumulatorStack,
 }
 
 #[derive(Debug)]
@@ -175,11 +180,16 @@ impl Board {
             hash: 0,
             fullmove_counter: 1,
             positions: HashList::new(),
-            undo_stack: Box::new(UndoStack::new()),
+            undo_stack: UndoStack::new(),
             eval_eg: 0,
             eval_mg: 0,
             game_phase: 0,
+            accum_stack: AccumulatorStack::new(),
         };
+        board.accum_stack.push(
+            Accumulator::new::<WhiteSide>(&board),
+            Accumulator::new::<BlackSide>(&board),
+        );
         board.hash = board.calculate_hash();
         board.positions.push(board.hash);
         board.game_phase = board.calc_phase();
@@ -313,8 +323,13 @@ impl Board {
             game_phase: 0,
             fullmove_counter: fullmoves_b,
             positions: HashList::new(),
-            undo_stack: Box::new(UndoStack::new()),
+            undo_stack: UndoStack::new(),
+            accum_stack: AccumulatorStack::new(),
         };
+        board.accum_stack.push(
+            Accumulator::new::<WhiteSide>(&board),
+            Accumulator::new::<BlackSide>(&board),
+        );
         board.hash = board.calculate_hash();
         board.positions.push(board.hash);
         board.eval_eg = board.calculate_eg();
@@ -426,6 +441,11 @@ impl Board {
     }
 
     #[inline(always)]
+    pub fn latest_accum(&self) -> &[Accumulator; 2] {
+        self.accum_stack.peek()
+    }
+
+    #[inline(always)]
     pub fn get_phase(&self) -> i16 {
         self.game_phase
     }
@@ -440,8 +460,14 @@ impl Board {
         self.piece_bb
     }
 
-    pub fn get_bit_board(&self, i: usize) -> Bitboard {
-        self.piece_bb[i]
+    #[inline(always)]
+    pub fn get_bitboard(&self, piece: Piece, color: Color) -> Bitboard {
+        self.piece_bb[piece.index() + color.offset()]
+    }
+
+    #[inline(always)]
+    pub fn get_side_bb<S: Side>(&self) -> Bitboard {
+        self.color_bb[S::INDEX]
     }
 
     pub fn get_occupied(&self) -> Bitboard {
@@ -978,8 +1004,30 @@ impl Board {
         None
     }
 
+    pub fn insufficient_material(&self) -> bool {
+        if !(self.piece_bb[Pawn.index() + WhiteSide::OFFSET]
+            | self.piece_bb[Pawn.index() + BlackSide::OFFSET]
+            | self.piece_bb[Rook.index() + WhiteSide::OFFSET]
+            | self.piece_bb[Rook.index() + BlackSide::OFFSET]
+            | self.piece_bb[Queen.index() + WhiteSide::OFFSET]
+            | self.piece_bb[Queen.index() + BlackSide::OFFSET])
+            .is_empty()
+        {
+            return false;
+        }
+        let w_knights = self.piece_bb[Knight.index() + WhiteSide::OFFSET].count_ones();
+        let b_knights = self.piece_bb[Knight.index() + BlackSide::OFFSET].count_ones();
+        let w_bishops = self.piece_bb[Bishop.index() + WhiteSide::OFFSET].count_ones();
+        let b_bishops = self.piece_bb[Bishop.index() + BlackSide::OFFSET].count_ones();
+        let total_minors = w_knights + b_knights + w_bishops + b_bishops;
+        if total_minors <= 1 {
+            return true;
+        }
+        false
+    }
+
     pub fn game_result(&mut self) -> Option<GameResult> {
-        if self.fifty_moves() || self.threefold() {
+        if self.fifty_moves() || self.threefold() || self.insufficient_material() {
             return Some(GameResult::Draw);
         }
 
@@ -1003,6 +1051,18 @@ impl Board {
         }
 
         num_occurences > 1
+    }
+
+    pub fn is_quiet(&mut self) -> bool {
+        if self.in_check() {
+            return false;
+        }
+        for &m in self.generate_legals().as_slice() {
+            if m.is_capture() || m.is_promo() {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -1522,5 +1582,63 @@ mod test {
             b.game_result().is_some_and(|res| res == GameResult::Draw),
             "Stalemate"
         );
+    }
+    #[test]
+    fn insufficient_material_1() {
+        let mut b = Board::from_fen("8/8/8/8/2k5/5n2/3B4/1K6 b - - 0 1").unwrap();
+        assert!(
+            !b.insufficient_material(),
+            "Board does not have insufficient material"
+        );
+        b.make_pl_move_from_string::<false>("f3d2");
+        assert!(b.insufficient_material(), "Board has insufficient material")
+    }
+    #[test]
+    fn insufficient_material_2() {
+        let mut b = Board::from_fen("8/8/8/8/2kR4/8/8/1K6 b - - 0 1").unwrap();
+        assert!(
+            !b.insufficient_material(),
+            "Board does not have insufficient material"
+        );
+        b.make_pl_move_from_string::<false>("c4d4");
+        assert!(b.insufficient_material(), "Board has insufficient material")
+    }
+    #[test]
+    fn insufficient_material_3() {
+        let b = Board::from_fen("8/8/8/8/2k4P/8/8/1K6 b - - 0 1").unwrap();
+        assert!(
+            !b.insufficient_material(),
+            "Board does not have insufficient material"
+        );
+    }
+    #[test]
+    fn insufficient_material_4() {
+        let mut b = Board::from_fen("8/8/8/5Q2/3N4/k7/8/1K3r2 b - - 0 1").unwrap();
+        assert!(
+            !b.insufficient_material(),
+            "Board does not have insufficient material"
+        );
+        b.make_pl_move_from_string::<false>("f1f5");
+        assert!(
+            !b.insufficient_material(),
+            "Board does not have insufficient material"
+        );
+        b.make_pl_move_from_string::<false>("d4f5");
+        assert!(b.insufficient_material(), "Board has insufficient material")
+    }
+
+    #[test]
+    fn quiet_position() {
+        let mut b = Board::default();
+        assert!(b.is_quiet(), "Startpos is a quiet position");
+    }
+
+    #[test]
+    fn unquiet_position1() {
+        let mut b = Board::default();
+        b.make_pl_move_from_string::<false>("e2e4");
+        assert!(b.is_quiet(), "Position is quiet");
+        b.make_pl_move_from_string::<false>("d7d5");
+        assert!(!b.is_quiet(), "Position is not quiet");
     }
 }

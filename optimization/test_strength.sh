@@ -1,6 +1,6 @@
 cutechess-cli \
   -engine name="After" cmd="./engines/after" proto=uci \
-  -engine name="Before" cmd="./engines/before" proto=uci \
+  -engine name="Before" cmd="./engines/pesto" proto=uci \
   -each tc=10+0.1 \
   -games 5000 \
   -repeat \

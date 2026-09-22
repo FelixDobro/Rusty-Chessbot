@@ -9,11 +9,18 @@ tuning = []
 
 
 [dependencies]
+bytemuck = { version = "1.25.2", features = ["derive"] }
 criterion = "0.8.2"
+flate2 = "1.1.10"
+indicatif = { version = "0.17", features = ["rayon"] }
 rayon = "1.12.0"
 rstest = "0.26.1"
 rstest_reuse = "0.7.0"
+rusqlite = "0.40.2"
 
 [[bench]]
 name = "bench_main" 
 harness = false
+
+[build-dependencies]
+flate2 = "1.1.10"

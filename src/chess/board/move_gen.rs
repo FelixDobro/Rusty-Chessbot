@@ -440,6 +440,12 @@ impl Board {
         let (from, to, from_board, to_board) = m.split();
         let movement = from_board ^ to_board;
 
+        let own_king = self.get_king_square::<S>();
+        let opp_king = self.get_king_square::<S::OPPOSITE>();
+        let accum = self.accum_stack.peek().clone();
+        let mut own_accum = accum[S::INDEX];
+        let mut opp_accum = accum[S::OPPOSITE::INDEX];
+
         let piece_moved = self.piece[from.index()];
         let piece_captured = self.piece[to.index()];
 
@@ -453,6 +459,7 @@ impl Board {
             castling_rights: self.castling_rights,
             en_passant_square: self.en_passant,
             halfmove_clock: self.halfmoves,
+            fullmoves: self.fullmove_counter,
             hash: self.hash,
             captured_piece: piece_captured,
             last_mg: self.eval_mg,
@@ -467,8 +474,10 @@ impl Board {
         self.castling_rights &= !CASTLING_RIGHTS[from.index()];
 
         if EVAL {
-            self.rm_eval::<S>(piece_moved, from);
-            self.add_eval::<S>(piece_moved, to);
+            own_accum.rm_own_piece::<S>(piece_moved, from, own_king);
+            own_accum.add_own_piece::<S>(piece_moved, to, own_king);
+            opp_accum.rm_opp_piece::<S::OPPOSITE>(piece_moved, from, opp_king);
+            opp_accum.add_opp_piece::<S::OPPOSITE>(piece_moved, to, opp_king);
         }
 
         if piece_captured != Empty {
@@ -478,8 +487,8 @@ impl Board {
             self.halfmoves = 0;
             self.castling_rights &= !CASTLING_RIGHTS[to.index()];
             if EVAL {
-                self.rm_eval::<S::OPPOSITE>(piece_captured, to);
-                self.rm_p_eval::<S::OPPOSITE>(piece_captured);
+                opp_accum.rm_own_piece::<S::OPPOSITE>(piece_captured, to, opp_king);
+                own_accum.rm_opp_piece::<S>(piece_captured, to, own_king);
             }
             self.game_phase -= PHASE_VALUES[piece_captured.index()];
         }
@@ -509,9 +518,10 @@ impl Board {
             self.update_hash_piece::<S>(Pawn, to);
             self.halfmoves = 0;
             if EVAL {
-                self.rm_eval::<S>(piece_moved, to);
-                self.add_eval::<S>(promo, to);
-                self.add_p_eval::<S>(promo);
+                own_accum.rm_own_piece::<S>(piece_moved, to, own_king);
+                own_accum.add_own_piece::<S>(promo, to, own_king);
+                opp_accum.rm_opp_piece::<S::OPPOSITE>(piece_moved, to, opp_king);
+                opp_accum.add_opp_piece::<S::OPPOSITE>(promo, to, opp_king);
             }
         } else if move_flags == Move::EN_PASSANT {
             let pawn_remove_board = EN_PASSANT_RM_SQUARES[to.index()];
@@ -522,8 +532,8 @@ impl Board {
             self.update_hash_piece::<S::OPPOSITE>(Pawn, ep_square);
             self.halfmoves = 0;
             if EVAL {
-                self.rm_eval::<S::OPPOSITE>(Pawn, ep_square);
-                self.rm_p_eval::<S::OPPOSITE>(Pawn);
+                opp_accum.rm_own_piece::<S::OPPOSITE>(Pawn, ep_square, opp_king);
+                own_accum.rm_opp_piece::<S>(Pawn, ep_square, own_king);
             }
         } else if m.is_castle() {
             let mechs = &CASTLING_TABLE[S::INDEX][(move_flags & 1) as usize];
@@ -534,9 +544,22 @@ impl Board {
             self.update_hash_piece::<S>(Rook, mechs.rook_appears);
             self.update_hash_piece::<S>(Rook, mechs.rook_disappears);
             if EVAL {
-                self.rm_eval::<S>(Rook, mechs.rook_disappears);
-                self.add_eval::<S>(Rook, mechs.rook_appears);
+                own_accum.rm_own_piece::<S>(Rook, mechs.rook_disappears, own_king);
+                own_accum.add_own_piece::<S>(Rook, mechs.rook_appears, own_king);
+                opp_accum.rm_opp_piece::<S::OPPOSITE>(Rook, mechs.rook_disappears, opp_king);
+                opp_accum.add_opp_piece::<S::OPPOSITE>(Rook, mechs.rook_appears, opp_king);
             }
+        }
+
+        if piece_moved == King {
+            own_accum.reset::<S>(self);
+            opp_accum.reset::<S::OPPOSITE>(self);
+        }
+        if S::COLOR == Black {
+            self.fullmove_counter += 1;
+            self.accum_stack.push(opp_accum, own_accum);
+        } else {
+            self.accum_stack.push(own_accum, opp_accum);
         }
 
         self.occupied = self.color_bb[0] | self.color_bb[1];
@@ -548,7 +571,9 @@ impl Board {
             self.unmake_pl_move_p::<S>(m, &undo_info);
             return false;
         }
+
         self.undo_stack.push(undo_info);
+
         true
     }
 
@@ -605,12 +630,14 @@ impl Board {
         self.castling_rights = undo_info.castling_rights;
         self.en_passant = undo_info.en_passant_square;
         self.halfmoves = undo_info.halfmove_clock;
+        self.fullmove_counter = undo_info.fullmoves;
         self.hash = undo_info.hash;
         self.turn = self.turn.opposite();
         self.eval_eg = undo_info.last_eg;
         self.eval_mg = undo_info.last_mg;
         self.game_phase = undo_info.last_phase;
         self.positions.pop();
+        self.accum_stack.pop();
     }
 
     pub fn unmake_pl_move(&mut self, m: Move) {
@@ -632,6 +659,7 @@ impl Board {
             castling_rights: self.castling_rights,
             en_passant_square: self.en_passant,
             halfmove_clock: self.halfmoves,
+            fullmoves: self.fullmove_counter,
             hash: self.hash,
             captured_piece: Empty,
             last_eg: self.eval_eg,
@@ -699,7 +727,7 @@ mod test {
             "Hashes did not change accordingly"
         );
         board.unmake_nullmove();
-        board.undo_stack = Box::new(UndoStack::new());
+        board.undo_stack = UndoStack::new();
         println!("{}", board.undo_stack == initial.undo_stack);
         assert_eq!(board, initial, "Boards should be the same after undo");
     }

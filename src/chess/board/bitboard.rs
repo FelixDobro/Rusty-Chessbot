@@ -35,6 +35,11 @@ impl Bitboard {
     }
 
     #[inline(always)]
+    pub fn is_empty(self) -> bool {
+        self == EMPTY
+    }
+
+    #[inline(always)]
     pub const fn count_ones(self) -> u32 {
         self.0.count_ones()
     }

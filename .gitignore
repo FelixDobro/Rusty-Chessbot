@@ -2,10 +2,16 @@
 
 .vscode/
 .cargo/
+__pycache__/
 
 logs/
 
+*.db
+*.sql
+
 data/
+model_weights/
+
 results/
 engines/
 *.ipynb
