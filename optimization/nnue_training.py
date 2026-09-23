@@ -26,7 +26,7 @@ BATCH_SIZE = 1024
 DB_PATH = "../chess.db"
 EVAL_TABLE_NAME = "evaluated"
 TRAIN_TABLE_NAME= "training"
-LR = 5e-4
+LR = 1e-3
 WEIGHT_DECAY = 1e-5
 CHUNK_SIZE = 20_000
 
@@ -76,13 +76,13 @@ def insert(offset):
         
         board = chess.Board(row["fen"])
         own, opp = encode(board)
-        row["eval"]
+        eval_scaled = sigmoid(row["eval"] / CP_SCALE)
         outcome = game_outcome(row["res"], board.turn)
-        target_eval = LAMBDA * row["eval"] + (1.0 - LAMBDA) * outcome
+        target_eval = LAMBDA * eval_scaled + (1.0 - LAMBDA) * outcome
         info = {
             "own_pov": own.tobytes(),
             "opp_pov": opp.tobytes(),
-            "eval": np.float32(target_eval),
+            "eval": target_eval,
             "eval_id":row["id"]
         }
         res.append(info)
@@ -289,14 +289,14 @@ class Positions(Dataset):
             opp.append(row[1])
             eval.append(row[2])
 
-        own_tensors = [torch.frombuffer(bytearray(b), dtype=torch.int64) for b in own]
-        opp_tensors = [torch.frombuffer(bytearray(b), dtype=torch.int64) for b in opp]
+        own_tensors = [torch.from_numpy(np.frombuffer(b, dtype=np.int64).copy()) for b in own]
+        opp_tensors = [torch.from_numpy(np.frombuffer(b, dtype=np.int64).copy()) for b in opp]
                 
         own_padded = pad_sequence(own_tensors, batch_first=True, padding_value=PAD_IDX)
         opp_padded = pad_sequence(opp_tensors, batch_first=True, padding_value=PAD_IDX)
 
         
-        eval_tensor = torch.tensor(eval, dtype=torch.float32)
+        eval_tensor = torch.tensor(eval, dtype=torch.float32).unsqueeze(1)
 
         return own_padded, opp_padded, eval_tensor
     
