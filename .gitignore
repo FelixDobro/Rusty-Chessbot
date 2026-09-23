@@ -17,3 +17,5 @@ engines/
 *.ipynb
 *.epd
 *.bin
+*.db-wal
+*.db-shm

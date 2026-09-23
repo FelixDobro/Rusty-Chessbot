@@ -10,8 +10,10 @@ from torch.optim import Adam
 from torch.nn import functional as F
 from tqdm import tqdm
 from torch.utils.data.dataloader import DataLoader, Dataset
+from torch.utils.data.sampler import RandomSampler, BatchSampler
 from torch import nn
 import math
+from sqlite_utils.db import Database
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_PATH = "../data/first.csv"
@@ -20,10 +22,13 @@ SAMPLES = -1 # set to -1 for all data
 EPOCHS = 100
 CP_SCALE = 400
 LAMBDA = 0.99
-BATCH_SIZE = 2048 
+BATCH_SIZE = 1024
+DB_PATH = "../chess.db"
+EVAL_TABLE_NAME = "evaluated"
+TRAIN_TABLE_NAME= "training"
 LR = 5e-4
 WEIGHT_DECAY = 1e-5
-
+CHUNK_SIZE = 20_000
 
 offset = [0,1,2,3,4]
 OPPONENT_OFFSET = 5
@@ -32,7 +37,7 @@ not_king = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]
 def flip(sq):
     return sq ^ 56
 
-def encode(board: chess.Board):
+def encode(board: chess.Board) -> tuple[np.ndarray, np.ndarray]:
     wk_pos = board.pieces(chess.KING, chess.WHITE).pop()
     bk_pos = board.pieces(chess.KING, chess.BLACK).pop()
     wk_offset = wk_pos * 11 * 64 
@@ -59,6 +64,29 @@ def encode(board: chess.Board):
 
     return [w,b] if board.turn else [b,w]
 
+
+
+
+
+def insert(offset):
+    db = Database("../chess.db")
+    rows = db["evaluated"].rows_where(f"id >= {offset} AND id < {offset + CHUNK_SIZE}")
+    res = []
+    for row in rows:
+        
+        board = chess.Board(row["fen"])
+        own, opp = encode(board)
+        row["eval"]
+        outcome = game_outcome(row["res"], board.turn)
+        target_eval = LAMBDA * row["eval"] + (1.0 - LAMBDA) * outcome
+        info = {
+            "own_pov": own.tobytes(),
+            "opp_pov": opp.tobytes(),
+            "eval": np.float32(target_eval),
+            "eval_id":row["id"]
+        }
+        res.append(info)
+    db["training"].insert_all(res)
 
 def prev_power_two(x: float) -> float: 
     _, exponent = math.frexp(x)
@@ -238,27 +266,45 @@ def process_row(row: pd.Series):
 
 
 class Positions(Dataset):
-    def __init__(self, data):
+    def __init__(self, db_path, table_name):
         super().__init__()
-        
-        self.fens = data["fen"].values
-        self.outcomes = data["res"].values
-        self.values = sigmoid(data["eval"].values / CP_SCALE)
+
+        self.db = None
+        self.db_path = db_path
+        self.table_name = table_name
 
         
 
-    def __getitem__(self, index):
-        fen = self.fens[index]
-        res = self.outcomes[index]
-        board = chess.Board(fen=fen)
-        current, opponent = encode(board)
-        outcome = game_outcome(res, board.turn)
+    def __getitems__(self, indices):
+        if self.db == None:
+            self.db = Database(self.db_path)
 
-        target_eval = LAMBDA * self.values[index] + (1.0 - LAMBDA) * outcome
-        return current, opponent, np.float32(target_eval)
+        indices = [idx + 1 for idx in indices]
+        place_holder = ",".join("?" for _ in range(len(indices)))
 
+        query = f"SELECT own_pov, opp_pov, eval FROM {self.table_name} WHERE id IN ({place_holder})"
+        own, opp, eval = [], [], []
+        for row in self.db.execute(query, indices):
+            own.append(row[0])
+            opp.append(row[1])
+            eval.append(row[2])
+
+        own_tensors = [torch.frombuffer(bytearray(b), dtype=torch.int64) for b in own]
+        opp_tensors = [torch.frombuffer(bytearray(b), dtype=torch.int64) for b in opp]
+                
+        own_padded = pad_sequence(own_tensors, batch_first=True, padding_value=PAD_IDX)
+        opp_padded = pad_sequence(opp_tensors, batch_first=True, padding_value=PAD_IDX)
+
+        
+        eval_tensor = torch.tensor(eval, dtype=torch.float32)
+
+        return own_padded, opp_padded, eval_tensor
+    
     def __len__(self):
-        return len(self.values)
+        temp_db = Database(self.db_path)
+        count = temp_db[self.table_name].count
+        temp_db.conn.close()
+        return count
 
 
 def collate_fn(batch):
@@ -272,20 +318,18 @@ def collate_fn(batch):
 
     return cur_padded, opp_padded, eval_tensor
 
+def identity_collate_fn(batch):
+    return batch
 
 if __name__ == "__main__":
     print("Loading data")
-    data = None
-    if SAMPLES > 0:
-        data = pd.read_csv(DATA_PATH, nrows=SAMPLES)
-    else:
-        data = pd.read_csv(DATA_PATH)
 
-    dataset = Positions(data)
+    data = Positions(DB_PATH, TRAIN_TABLE_NAME)
+    
+    rs = RandomSampler(data)
+    bs = BatchSampler(rs, batch_size=BATCH_SIZE,drop_last=False)
+    loader = DataLoader(data, batch_sampler=bs, collate_fn=identity_collate_fn, num_workers=DATA_LOADER_WORKERS, prefetch_factor=3)
     print("Data Loaded")
-    loader = DataLoader(dataset=dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn, num_workers=DATA_LOADER_WORKERS)
-
- 
    
     net = NNUE().to(DEVICE)
     net.train()
