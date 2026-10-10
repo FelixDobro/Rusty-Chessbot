@@ -1,8 +1,7 @@
 import os
 
-import pandas as pd
+
 import numpy as np
-import chess
 import torch
 import gzip
 from torch.nn.utils.rnn import pad_sequence
