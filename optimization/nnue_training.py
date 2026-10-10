@@ -6,7 +6,8 @@ import chess
 import torch
 import gzip
 from torch.nn.utils.rnn import pad_sequence
-from torch.optim import Adam
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.nn import functional as F
 from tqdm import tqdm
 from torch.utils.data.dataloader import DataLoader, Dataset
@@ -19,74 +20,17 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_PATH = "../data/first.csv"
 DATA_LOADER_WORKERS = 12
 SAMPLES = -1 # set to -1 for all data
-EPOCHS = 100
+EPOCHS = 25
 CP_SCALE = 400
 LAMBDA = 0.99
-BATCH_SIZE = 1024
+BATCH_SIZE = 2048 * 2
 DB_PATH = "../chess.db"
 EVAL_TABLE_NAME = "evaluated"
 TRAIN_TABLE_NAME= "training"
 LR = 1e-3
 WEIGHT_DECAY = 1e-5
-CHUNK_SIZE = 20_000
-
-offset = [0,1,2,3,4]
-OPPONENT_OFFSET = 5
-not_king = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN]
-
-def flip(sq):
-    return sq ^ 56
-
-def encode(board: chess.Board) -> tuple[np.ndarray, np.ndarray]:
-    wk_pos = board.pieces(chess.KING, chess.WHITE).pop()
-    bk_pos = board.pieces(chess.KING, chess.BLACK).pop()
-    wk_offset = wk_pos * 11 * 64 
-    bk_offset = flip(bk_pos) * 11 * 64
-    w_indices = []
-    b_indices = []
-    w_indices.append(wk_offset + 10 * 64 + bk_pos)
-    b_indices.append(bk_offset + 10 * 64 + flip(wk_pos))
-    for piece in not_king:
-        for sq in board.pieces(piece, chess.WHITE):
-            idx = piece - 1
-            wp_offset = 64 * offset[idx] + sq
-            bp_offset = 64 * (OPPONENT_OFFSET + offset[idx]) + flip(sq)
-            w_indices.append(wk_offset + wp_offset)
-            b_indices.append(bk_offset + bp_offset)
-        for sq in board.pieces(piece, chess.BLACK):
-            idx = piece - 1
-            wp_offset = 64 * (OPPONENT_OFFSET + offset[idx]) + sq
-            bp_offset = 64 * offset[idx] + flip(sq)
-            w_indices.append(wk_offset + wp_offset)
-            b_indices.append(bk_offset + bp_offset)
-    w = np.array(w_indices)
-    b = np.array(b_indices)
-
-    return [w,b] if board.turn else [b,w]
 
 
-
-
-
-def insert(offset):
-    db = Database("../chess.db")
-    rows = db["evaluated"].rows_where(f"id >= {offset} AND id < {offset + CHUNK_SIZE}")
-    res = []
-    for row in rows:
-        
-        board = chess.Board(row["fen"])
-        own, opp = encode(board)
-        eval_scaled = sigmoid(row["eval"] / CP_SCALE)
-        outcome = game_outcome(row["res"], board.turn)
-        target_eval = LAMBDA * eval_scaled + (1.0 - LAMBDA) * outcome
-        info = {
-            "own_pov": own.tobytes(),
-            "opp_pov": opp.tobytes(),
-            "eval": target_eval,
-            "eval_id":row["id"]
-        }
-        res.append(info)
-    db["training"].insert_all(res)
 
 def prev_power_two(x: float) -> float: 
     _, exponent = math.frexp(x)
@@ -160,7 +104,7 @@ class Hidden(nn.Module):
         self.min = min
         self.max = max
         stdv = 1.0 / math.sqrt(IN)
-        self.weight = nn.Parameter(torch.empty((OUT, IN)).uniform_(-stdv, stdv))
+        self.weight = nn.Parameter(torch.randn((OUT, IN)) * 0.05)
         self.bias = nn.Parameter(torch.zeros(OUT))
 
     def forward(self, x):
@@ -244,24 +188,7 @@ class NNUE(nn.Module):
             
         print(f"Quantized with values QA: {QA} and QB: {QB}, total bytes: {total}, % 64 = {total % 64}")
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
 
-def game_outcome(res, turn):
-    if res == "Draw":
-        return 0.5
-    if res == "BlackWin":
-        return 0 if turn else 1
-    else:
-        return 1 if turn else 0
-
-def process_row(row: pd.Series):
-    fen = row["fen"]
-    outcome = row["res"]
-    board = chess.Board(fen=fen)
-    encoding = encode(board=board)
-    outcome = game_outcome(outcome, board.turn)
-    return (encoding, outcome)
 
 
 
@@ -333,7 +260,8 @@ if __name__ == "__main__":
    
     net = NNUE().to(DEVICE)
     net.train()
-    optim = Adam(net.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    optim = AdamW(net.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = CosineAnnealingLR(optim, T_max=EPOCHS, eta_min=1e-6)
     print(f"Starting training on {DEVICE}")
 
     for i in tqdm(range(EPOCHS)):
@@ -353,4 +281,6 @@ if __name__ == "__main__":
             optim.step()
             epoch_loss += loss.item() * current.size(0)
         print(epoch_loss)
-        torch.save(net.state_dict(), "model_weights/model_weights.pt")
+        scheduler.step()
+        print(f"Current LR: {scheduler.get_last_lr()}")
+        torch.save(net.state_dict(), "model_weights/model_weights.pt")  
