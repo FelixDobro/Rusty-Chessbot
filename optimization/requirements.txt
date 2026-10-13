@@ -2,3 +2,5 @@ numpy
 tqdm
 datasets
 dotenv
+sqlite_utils
+torch
