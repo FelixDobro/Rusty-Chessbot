@@ -14,17 +14,18 @@ from torch.utils.data.dataloader import DataLoader, Dataset
 from torch.utils.data.sampler import RandomSampler, BatchSampler
 from torch import nn
 import math
+from torch.utils.data import BatchSampler, RandomSampler, SequentialSampler
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATA_LOADER_WORKERS = 12
+DATA_LOADER_WORKERS = 16
 EVALUATION_SIZE = 0.01  # What portion of data will be used for evaluation 
-EPOCHS = 25
+EPOCHS = 30
 CP_SCALE = 400
-LAMBDA = 0.99
-BATCH_SIZE = 4096 
+LAMBDA = 0.98
+BATCH_SIZE = 2**12
 REPO_NAME = "FelixDobro/chess-training-encodet"
-REVISION = "test"
+REVISION = "training_run_1"
 LR = 1e-3
 WEIGHT_DECAY = 1e-5
 
@@ -236,7 +237,7 @@ class Positions(Dataset):
 def collate_fn(batch):
     own_povs = [item["Own_pov"] for item in batch]
     opp_povs = [item["Opp_pov"] for item in batch]
-    win_probs = [item["Win_Prob"] for item in batch]
+    win_probs = [item["Win_prob"] for item in batch]
     outcomes = [item["Outcome"] for item in batch]
 
     own = pad_sequence(own_povs, batch_first=True, padding_value=PAD_IDX)
@@ -245,6 +246,19 @@ def collate_fn(batch):
     outcomes = torch.stack(outcomes)
     targets = win_probs * LAMBDA - outcomes * (1-LAMBDA)
     return own, opp, targets.unsqueeze(1)
+
+
+def fast_collate_fn(batch_dict):
+    
+    own = pad_sequence(batch_dict["Own_pov"], batch_first=True, padding_value=PAD_IDX)
+    opp = pad_sequence(batch_dict["Opp_pov"], batch_first=True, padding_value=PAD_IDX)
+    
+    win_probs = batch_dict["Win_prob"]
+    outcomes = batch_dict["Outcome"]
+    targets = (win_probs * LAMBDA - outcomes * (1.0 - LAMBDA)).unsqueeze(1)
+    
+    return own, opp, targets
+
 
 def identity_collate_fn(batch):
     return batch
@@ -264,8 +278,37 @@ if __name__ == "__main__":
     train_dataset = split_dataset["train"].with_format("torch")
     test_dataset = split_dataset["test"].with_format("torch")
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,collate_fn=collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, collate_fn=collate_fn)
+
+    train_sampler = BatchSampler(
+        RandomSampler(train_dataset), 
+        batch_size=BATCH_SIZE, 
+        drop_last=False
+    )
+    test_sampler = BatchSampler(
+        SequentialSampler(test_dataset), 
+        batch_size=BATCH_SIZE, 
+        drop_last=False
+    )
+
+    # 2. DataLoader OHNE batch_size (weil der Sampler bereits batcht)
+    # WICHTIG: num_workers=0 oder maximal 2 reichen jetzt völlig, weil kein Einzel-Item-Overhead mehr da ist!
+    train_loader = DataLoader(
+        train_dataset,
+        sampler=train_sampler,
+        batch_size=None,
+        collate_fn=fast_collate_fn,
+        num_workers=DATA_LOADER_WORKERS,               # Starte mit 0, Arrow cacht ohnehin im OS-Pagecache
+        pin_memory=True
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        sampler=test_sampler,
+        batch_size=None,
+        collate_fn=fast_collate_fn,
+        num_workers=DATA_LOADER_WORKERS,
+        pin_memory=True
+    )
     print("Data Loaded")
     
     net = NNUE().to(DEVICE)
