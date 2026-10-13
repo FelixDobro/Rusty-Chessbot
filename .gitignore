@@ -19,3 +19,4 @@ engines/
 *.bin
 *.db-wal
 *.db-shm
+.env

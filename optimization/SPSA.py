@@ -117,8 +117,7 @@ class SPSA:
     def __init__(self):
         
         self.start = None
-        os.makedirs(f"logs/{RUN}", exist_ok=True)
-        self.logger = SummaryWriter(logdir=f"logs/{RUN}")
+        
         engine = SimpleEngine.popen_uci(ENGINE_CMD)
         param_min = []
         param_max = []
@@ -237,21 +236,21 @@ class SPSA:
 
         return res_sum / (GAMES_PER_ITERATION * 2)
 
-    def log(self, step, ak, ck):
-        scaled = self.scale_up(self.cur)
-        for i in range(len(self.cur)):
-            self.logger.add_scalars(
-                main_tag=self.name[i],
-                tag_scalar_dict={
-                    "current": scaled[i],
-                    "min": self.mins[i],
-                    "max": self.maxs[i],
-                },
-                global_step=step
-            )
-        self.logger.add_scalar("hyperparams/ak", ak, step)
-        self.logger.add_scalar("hyperparams/ck", ck, step)
-        self.logger.flush()
+    # def log(self, step, ak, ck):
+    #     scaled = self.scale_up(self.cur)
+    #     for i in range(len(self.cur)):
+    #         self.logger.add_scalars(
+    #             main_tag=self.name[i],
+    #             tag_scalar_dict={
+    #                 "current": scaled[i],
+    #                 "min": self.mins[i],
+    #                 "max": self.maxs[i],
+    #             },
+    #             global_step=step
+    #         )
+    #     self.logger.add_scalar("hyperparams/ak", ak, step)
+    #     self.logger.add_scalar("hyperparams/ck", ck, step)
+    #     self.logger.flush()
 
     def optimize(self):
         global cur_iteration
@@ -277,14 +276,14 @@ class SPSA:
             new = ak * np.divide(dy, dx, out=np.zeros_like(dx), where=dx!=0)
             self.cur = np.clip(self.cur + new, 0, 1)
 
-            self.log(i, ak, ck)
+            # self.log(i, ak, ck)
             if VERBOSE:
                 if i % RESULT_UPDATE == 0: 
                     self.result_file(i)
                 print(f"Win ratio: {dy}")
 
         ray.get([worker.shutdown.remote() for worker in self.workers])
-        self.logger.close()
+        # self.logger.close()
         self.result_file(NUM_ITERATIONS)
 
 

@@ -1,6 +1,7 @@
 import os
 
-
+from datasets import Dataset, load_dataset
+from dotenv import load_dotenv
 import numpy as np
 import torch
 import gzip
@@ -16,16 +17,14 @@ import math
 from sqlite_utils.db import Database
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATA_PATH = "../data/first.csv"
 DATA_LOADER_WORKERS = 12
-SAMPLES = -1 # set to -1 for all data
+EVALUATION_SIZE = 0.01  # What portion of data will be used for evaluation 
 EPOCHS = 25
 CP_SCALE = 400
 LAMBDA = 0.99
-BATCH_SIZE = 2048 * 2
-DB_PATH = "../chess.db"
-EVAL_TABLE_NAME = "evaluated"
-TRAIN_TABLE_NAME= "training"
+BATCH_SIZE = 4096 
+REPO_NAME = "FelixDobro/chess-training-encodet"
+REVISION = "test"
 LR = 1e-3
 WEIGHT_DECAY = 1e-5
 
@@ -228,21 +227,24 @@ class Positions(Dataset):
     
     def __len__(self):
         temp_db = Database(self.db_path)
-        count = temp_db[self.table_name].count
+        count = temp_db.execute(f"SELECT MAX(rowid) FROM {TRAIN_TABLE_NAME}").fetchone()[0] or 0
         temp_db.conn.close()
         return count
 
 
+
 def collate_fn(batch):
-    cur_list, opp_list, evals = zip(*batch)
-    cur_tensors = [torch.as_tensor(x, dtype=torch.long) for x in cur_list]
-    opp_tensors = [torch.as_tensor(x, dtype=torch.long) for x in opp_list]
-    cur_padded = pad_sequence(cur_tensors, batch_first=True, padding_value=PAD_IDX)
-    opp_padded = pad_sequence(opp_tensors, batch_first=True, padding_value=PAD_IDX)
+    own_povs = [item["Own_pov"] for item in batch]
+    opp_povs = [item["Opp_pov"] for item in batch]
+    win_probs = [item["Win_Prob"] for item in batch]
+    outcomes = [item["Outcome"] for item in batch]
 
-    eval_tensor = torch.tensor(evals, dtype=torch.float32).unsqueeze(1)
-
-    return cur_padded, opp_padded, eval_tensor
+    own = pad_sequence(own_povs, batch_first=True, padding_value=PAD_IDX)
+    opp = pad_sequence(opp_povs, batch_first=True, padding_value=PAD_IDX)
+    win_probs = torch.stack(win_probs)
+    outcomes = torch.stack(outcomes)
+    targets = win_probs * LAMBDA - outcomes * (1-LAMBDA)
+    return own, opp, targets.unsqueeze(1)
 
 def identity_collate_fn(batch):
     return batch
@@ -250,23 +252,35 @@ def identity_collate_fn(batch):
 if __name__ == "__main__":
     print("Loading data")
 
-    data = Positions(DB_PATH, TRAIN_TABLE_NAME)
-    
-    rs = RandomSampler(data)
-    bs = BatchSampler(rs, batch_size=BATCH_SIZE,drop_last=False)
-    loader = DataLoader(data, batch_sampler=bs, collate_fn=identity_collate_fn, num_workers=DATA_LOADER_WORKERS, prefetch_factor=3)
+    load_dotenv()
+    token = os.getenv("HUGGING_FACE_TOKEN")
+    if not token:
+        raise ValueError("No token provided")
+    print("Found token")
+
+    ds = load_dataset(REPO_NAME, token=token, revision=REVISION)
+
+    split_dataset = ds["train"].train_test_split(EVALUATION_SIZE)
+    train_dataset = split_dataset["train"].with_format("torch")
+    test_dataset = split_dataset["test"].with_format("torch")
+
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,collate_fn=collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, collate_fn=collate_fn)
     print("Data Loaded")
-   
+    
     net = NNUE().to(DEVICE)
-    net.train()
+
     optim = AdamW(net.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = CosineAnnealingLR(optim, T_max=EPOCHS, eta_min=1e-6)
     print(f"Starting training on {DEVICE}")
+    
 
     for i in tqdm(range(EPOCHS)):
+    
+        print(f"Training wit LR: {scheduler.get_last_lr()}")
+        net = net.train()
         epoch_loss = 0
-        print("Batch processing")
-        for batch in tqdm(loader):
+        for batch in tqdm(train_loader):
             current, opponent, eval = batch
             current = current.to(DEVICE)
             opponent = opponent.to(DEVICE)
@@ -279,7 +293,21 @@ if __name__ == "__main__":
             loss.backward()
             optim.step()
             epoch_loss += loss.item() * current.size(0)
-        print(epoch_loss)
+        print("Train loss: ", epoch_loss)
         scheduler.step()
-        print(f"Current LR: {scheduler.get_last_lr()}")
+        print("Evaluating net params") 
+        test_loss = 0
+        net = net.eval()
+        for batch in tqdm(test_loader):
+            current, opponent, eval = batch
+            current = current.to(DEVICE)
+            opponent = opponent.to(DEVICE)
+            eval = eval.to(DEVICE)
+
+            out = net(current, opponent)
+            out = torch.sigmoid(out)
+            loss = F.mse_loss(out, eval)
+            test_loss += loss.item() * current.size(0)
+        print("Test loss: ", test_loss)
+        print("Saving net params")
         torch.save(net.state_dict(), "model_weights/model_weights.pt")  
