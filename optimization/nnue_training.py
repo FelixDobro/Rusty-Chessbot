@@ -23,7 +23,7 @@ CP_SCALE = 400
 LAMBDA = 1
 BATCH_SIZE = 2**15
 REPO_NAME = "FelixDobro/chess-training-encodet"
-REVISION = "stockfish_test"   
+REVISION = "stockfish_run_1"   
 LR = 1e-3
 WEIGHT_DECAY = 1e-5
 
