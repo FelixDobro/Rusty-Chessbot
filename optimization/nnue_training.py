@@ -10,22 +10,20 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.nn import functional as F
 from tqdm import tqdm
-from torch.utils.data.dataloader import DataLoader, Dataset
-from torch.utils.data.sampler import RandomSampler, BatchSampler
+from torch.utils.data.dataloader import DataLoader
 from torch import nn
 import math
-from torch.utils.data import BatchSampler, RandomSampler, SequentialSampler
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATA_LOADER_WORKERS = 16
+DATA_LOADER_WORKERS = 12
 EVALUATION_SIZE = 0.01  # What portion of data will be used for evaluation 
 EPOCHS = 30
 CP_SCALE = 400
-LAMBDA = 0.98
-BATCH_SIZE = 2**12
+LAMBDA = 1
+BATCH_SIZE = 2**15
 REPO_NAME = "FelixDobro/chess-training-encodet"
-REVISION = "training_run_1"
+REVISION = "stockfish_test"   
 LR = 1e-3
 WEIGHT_DECAY = 1e-5
 
@@ -244,19 +242,18 @@ def collate_fn(batch):
     opp = pad_sequence(opp_povs, batch_first=True, padding_value=PAD_IDX)
     win_probs = torch.stack(win_probs)
     outcomes = torch.stack(outcomes)
-    targets = win_probs * LAMBDA - outcomes * (1-LAMBDA)
+    targets = win_probs * LAMBDA + outcomes * (1-LAMBDA)
     return own, opp, targets.unsqueeze(1)
 
 
 def fast_collate_fn(batch_dict):
-    
     own = pad_sequence(batch_dict["Own_pov"], batch_first=True, padding_value=PAD_IDX)
     opp = pad_sequence(batch_dict["Opp_pov"], batch_first=True, padding_value=PAD_IDX)
     
     win_probs = batch_dict["Win_prob"]
-    outcomes = batch_dict["Outcome"]
-    targets = (win_probs * LAMBDA - outcomes * (1.0 - LAMBDA)).unsqueeze(1)
+    outcomes  = batch_dict["Outcome"]
     
+    targets = (win_probs * LAMBDA + outcomes * (1.0 - LAMBDA)).unsqueeze(1)
     return own, opp, targets
 
 
@@ -265,49 +262,36 @@ def identity_collate_fn(batch):
 
 if __name__ == "__main__":
     print("Loading data")
-
+    os.makedirs("model_weights", exist_ok=True)
     load_dotenv()
     token = os.getenv("HUGGING_FACE_TOKEN")
     if not token:
         raise ValueError("No token provided")
     print("Found token")
 
-    ds = load_dataset(REPO_NAME, token=token, revision=REVISION)
+    train_raw = load_dataset(REPO_NAME, token=token, revision=REVISION, num_proc=DATA_LOADER_WORKERS, split="train[:99%]")
+    val_raw = load_dataset(REPO_NAME, token=token, revision=REVISION, num_proc=DATA_LOADER_WORKERS, split="train[99%:]")
 
-    split_dataset = ds["train"].train_test_split(EVALUATION_SIZE)
-    train_dataset = split_dataset["train"].with_format("torch")
-    test_dataset = split_dataset["test"].with_format("torch")
+    # 516 und 12 sind glatt durch 12 (DATA_LOADER_WORKERS) teilbar
+    train_stream = train_raw.to_iterable_dataset(num_shards=516).shuffle(buffer_size=100_000, seed=42).with_format("torch").batch(BATCH_SIZE)
+    val_stream   = val_raw.to_iterable_dataset(num_shards=12).with_format("torch").batch(BATCH_SIZE)
 
-
-    train_sampler = BatchSampler(
-        RandomSampler(train_dataset), 
-        batch_size=BATCH_SIZE, 
-        drop_last=False
-    )
-    test_sampler = BatchSampler(
-        SequentialSampler(test_dataset), 
-        batch_size=BATCH_SIZE, 
-        drop_last=False
-    )
-
-    # 2. DataLoader OHNE batch_size (weil der Sampler bereits batcht)
-    # WICHTIG: num_workers=0 oder maximal 2 reichen jetzt völlig, weil kein Einzel-Item-Overhead mehr da ist!
     train_loader = DataLoader(
-        train_dataset,
-        sampler=train_sampler,
-        batch_size=None,
-        collate_fn=fast_collate_fn,
-        num_workers=DATA_LOADER_WORKERS,               # Starte mit 0, Arrow cacht ohnehin im OS-Pagecache
-        pin_memory=True
-    )
-
-    test_loader = DataLoader(
-        test_dataset,
-        sampler=test_sampler,
-        batch_size=None,
-        collate_fn=fast_collate_fn,
+        train_stream,
         num_workers=DATA_LOADER_WORKERS,
-        pin_memory=True
+        batch_size=None,
+        collate_fn=fast_collate_fn,
+        pin_memory=True,
+        prefetch_factor=2,  
+    )
+    test_loader = DataLoader(
+        val_stream,
+        num_workers=DATA_LOADER_WORKERS,
+        collate_fn=fast_collate_fn,
+        batch_size=None,
+        pin_memory=True,
+        prefetch_factor=2,
+        persistent_workers=True
     )
     print("Data Loaded")
     
@@ -317,40 +301,57 @@ if __name__ == "__main__":
     scheduler = CosineAnnealingLR(optim, T_max=EPOCHS, eta_min=1e-6)
     print(f"Starting training on {DEVICE}")
     
-
-    for i in tqdm(range(EPOCHS)):
-    
-        print(f"Training wit LR: {scheduler.get_last_lr()}")
-        net = net.train()
-        epoch_loss = 0
-        for batch in tqdm(train_loader):
+    for i in range(EPOCHS):
+        train_stream.set_epoch(i)
+        print(f"\n--- Epoch {i+1}/{EPOCHS} | LR: {scheduler.get_last_lr()[0]:.6f} ---")
+        
+        net.train()
+        epoch_loss = 0.0
+        train_samples = 0
+        
+        pbar = tqdm(train_loader, desc="Train")
+        for batch in pbar:
             current, opponent, eval = batch
-            current = current.to(DEVICE)
-            opponent = opponent.to(DEVICE)
-            eval = eval.to(DEVICE)
+            current = current.to(DEVICE, non_blocking=True)
+            opponent = opponent.to(DEVICE, non_blocking=True)
+            eval = eval.to(DEVICE, non_blocking=True)
 
-            out = net(current, opponent)
-            out = torch.sigmoid(out)
+            out = torch.sigmoid(net(current, opponent))
             loss = F.mse_loss(out, eval)
-            optim.zero_grad()
+            
+            optim.zero_grad(set_to_none=True)
             loss.backward()
             optim.step()
-            epoch_loss += loss.item() * current.size(0)
-        print("Train loss: ", epoch_loss)
+            
+            batch_size = current.size(0)
+            epoch_loss += loss.item() * batch_size
+            train_samples += batch_size
+            
+            # Zeigt den aktuellen Durchschnitts-Loss live im Ladebalken an
+            pbar.set_postfix(loss=f"{epoch_loss / train_samples:.6f}")
+            
+        avg_train_loss = epoch_loss / train_samples
         scheduler.step()
-        print("Evaluating net params") 
-        test_loss = 0
-        net = net.eval()
-        for batch in tqdm(test_loader):
-            current, opponent, eval = batch
-            current = current.to(DEVICE)
-            opponent = opponent.to(DEVICE)
-            eval = eval.to(DEVICE)
+        
+        net.eval()
+        test_loss = 0.0
+        test_samples = 0
+        
+        with torch.no_grad():
+            for batch in tqdm(test_loader, desc="Eval"):
+                current, opponent, eval = batch
+                current = current.to(DEVICE, non_blocking=True)
+                opponent = opponent.to(DEVICE, non_blocking=True)
+                eval = eval.to(DEVICE, non_blocking=True)
 
-            out = net(current, opponent)
-            out = torch.sigmoid(out)
-            loss = F.mse_loss(out, eval)
-            test_loss += loss.item() * current.size(0)
-        print("Test loss: ", test_loss)
-        print("Saving net params")
-        torch.save(net.state_dict(), "model_weights/model_weights.pt")  
+                out = torch.sigmoid(net(current, opponent))
+                loss = F.mse_loss(out, eval)
+                
+                batch_size = current.size(0)
+                test_loss += loss.item() * batch_size
+                test_samples += batch_size
+                
+        avg_test_loss = test_loss / test_samples
+        print(f"Train MSE: {avg_train_loss:.6f} | Val MSE: {avg_test_loss:.6f}")
+        
+        torch.save(net.state_dict(), "model_weights/model_weights.pt")

@@ -18,7 +18,7 @@ RUN = "NNUE"
 NUM_OPENING_MOVES =10
 NUM_ITERATIONS = 3_000
 GAMES_PER_ITERATION = 6 # * 2 because every opening is played twice
-NODES = 100_000
+NODES = 50_000
 
 VERBOSE = os.environ.get("verbose", True)
 RESULT_UPDATE = 50
