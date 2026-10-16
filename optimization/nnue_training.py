@@ -16,7 +16,7 @@ import math
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATA_LOADER_WORKERS = 12
+DATA_LOADER_WORKERS = 24
 EVALUATION_SIZE = 0.01  # What portion of data will be used for evaluation 
 EPOCHS = 30
 CP_SCALE = 400
@@ -86,13 +86,13 @@ class Accumulator(nn.Module):
         self.bias = nn.Parameter(torch.zeros(L1_SIZE))
 
     def forward(self, x):
-        
-        weights = F.embedding(x, self.weights, padding_idx=self.padding_idx)
+        # 1. ZUERST die kleine Gewichtematrix (184 MB) quantisieren, NICHT den 4GB Batch!
+        w_quant = quantize_ste(self.weights, QA, -2**15, 2**15 - 1)
+        b_quant = quantize_ste(self.bias, QA, -2**15, 2**15 - 1)
 
-        weights = quantize_ste(weights, QA, -2**15, 2**15 - 1)
-        bias = quantize_ste(self.bias, QA, -2**15, 2**15 - 1)
-
-        return weights.sum(dim=1) + bias
+        # 2. F.embedding_bag summiert direkt in C++/CUDA über dim=1, 
+        # OHNE den 4.16 GB großen [Batch, Pieces, 1024] Tensor im VRAM anzulegen!
+        return F.embedding_bag(x, w_quant, mode="sum", padding_idx=self.padding_idx) + b_quant
 
 class Hidden(nn.Module):
     def __init__(self, scale, min, max, IN, OUT):
@@ -273,8 +273,8 @@ if __name__ == "__main__":
     val_raw = load_dataset(REPO_NAME, token=token, revision=REVISION, num_proc=DATA_LOADER_WORKERS, split="train[99%:]")
 
     # 516 und 12 sind glatt durch 12 (DATA_LOADER_WORKERS) teilbar
-    train_stream = train_raw.to_iterable_dataset(num_shards=516).shuffle(buffer_size=100_000, seed=42).with_format("torch").batch(BATCH_SIZE)
-    val_stream   = val_raw.to_iterable_dataset(num_shards=12).with_format("torch").batch(BATCH_SIZE)
+    train_stream = train_raw.to_iterable_dataset(num_shards=720).shuffle(buffer_size=50_000, seed=42).with_format("torch").batch(BATCH_SIZE)
+    val_stream   = val_raw.to_iterable_dataset(num_shards=24).with_format("torch").batch(BATCH_SIZE)
 
     train_loader = DataLoader(
         train_stream,
