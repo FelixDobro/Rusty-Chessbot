@@ -16,7 +16,7 @@ import math
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DATA_LOADER_WORKERS = 24
+DATA_LOADER_WORKERS = 12
 EVALUATION_SIZE = 0.01  # What portion of data will be used for evaluation 
 EPOCHS = 30
 CP_SCALE = 400
@@ -300,7 +300,7 @@ if __name__ == "__main__":
     optim = AdamW(net.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = CosineAnnealingLR(optim, T_max=EPOCHS, eta_min=1e-6)
     print(f"Starting training on {DEVICE}")
-    
+    best_test_loss = float("inf")
     for i in range(EPOCHS):
         train_stream.set_epoch(i)
         print(f"\n--- Epoch {i+1}/{EPOCHS} | LR: {scheduler.get_last_lr()[0]:.6f} ---")
@@ -324,18 +324,12 @@ if __name__ == "__main__":
             optim.step()
             
             batch_size = current.size(0)
-            epoch_loss += loss.item() * batch_size
-            train_samples += batch_size
+            epoch_loss += loss.item()
             
-            # Zeigt den aktuellen Durchschnitts-Loss live im Ladebalken an
-            pbar.set_postfix(loss=f"{epoch_loss / train_samples:.6f}")
-            
-        avg_train_loss = epoch_loss / train_samples
         scheduler.step()
         
         net.eval()
         test_loss = 0.0
-        test_samples = 0
         
         with torch.no_grad():
             for batch in tqdm(test_loader, desc="Eval"):
@@ -348,10 +342,11 @@ if __name__ == "__main__":
                 loss = F.mse_loss(out, eval)
                 
                 batch_size = current.size(0)
-                test_loss += loss.item() * batch_size
-                test_samples += batch_size
-                
-        avg_test_loss = test_loss / test_samples
-        print(f"Train MSE: {avg_train_loss:.6f} | Val MSE: {avg_test_loss:.6f}")
-        
-        torch.save(net.state_dict(), "model_weights/model_weights.pt")
+                test_loss += loss.item() 
+
+
+        print(f"Train Loss: {epoch_loss:.6f} | Val Loss: {test_loss:.6f}")
+        if test_loss < best_test_loss:
+            print("Net params improved, saving weights")
+            best_test_loss = test_loss
+            torch.save(net.state_dict(), "model_weights/model_weights.pt")
